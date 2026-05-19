@@ -6,10 +6,10 @@
     { "source": "/api/proposed-image",   "destination": "/api/proposed_image" },
     { "source": "/api/fetch-suckling",   "destination": "/api/fetch_suckling" },
     { "source": "/api/scan-wine-label",  "destination": "/api/scan_wine_label" },
-    { "source": "/api/set-image",        "destination": "/api/set_image" },
-    { "source": "/api/find-suppliers",   "destination": "/api/find_suppliers" },
-    { "source": "/api/upload-image",     "destination": "/api/upload_image" },
-    { "source": "/api/confirm-proposed", "destination": "/api/confirm_proposed" },
-    { "source": "/api/discard-proposed", "destination": "/api/discard_proposed" }
+    { "source": "/api/set-image",        "destination": "/api/image_input?mode=url" },
+    { "source": "/api/upload-image",     "destination": "/api/image_input?mode=data" },
+    { "source": "/api/confirm-proposed", "destination": "/api/proposed_action?action=confirm" },
+    { "source": "/api/discard-proposed", "destination": "/api/proposed_action?action=discard" },
+    { "source": "/api/find-suppliers",   "destination": "/api/find_suppliers" }
   ]
 }
