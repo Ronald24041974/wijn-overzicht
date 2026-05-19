@@ -1,6 +1,7 @@
-import hmac, hashlib, time, os, base64
+import hmac, hashlib, time, os, base64, struct
 
-COOKIE_MAX_AGE = 30 * 24 * 3600
+COOKIE_MAX_AGE  = 30 * 24 * 3600
+CHALLENGE_MAX_AGE = 5 * 60   # 2FA challenge: 5 minuten
 
 
 def _secret() -> str:
@@ -25,33 +26,97 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
+# ── TOTP (RFC 6238) — alleen stdlib nodig ─────────────────────────────────────
+
+def generate_totp_secret() -> str:
+    return base64.b32encode(os.urandom(20)).decode()
+
+
+def get_totp_uri(secret: str, username: str) -> str:
+    from urllib.parse import quote
+    label = quote(f"Wijnoverzicht:{username}")
+    return f"otpauth://totp/{label}?secret={secret}&issuer=Wijnoverzicht&digits=6&period=30"
+
+
+def _hotp(key_bytes: bytes, counter: int) -> str:
+    msg = struct.pack(">Q", counter)
+    h = hmac.new(key_bytes, msg, hashlib.sha1).digest()
+    offset = h[-1] & 0x0F
+    code = struct.unpack(">I", h[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(code % 1_000_000).zfill(6)
+
+
+def verify_totp(secret_b32: str, code: str) -> bool:
+    try:
+        key = base64.b32decode(secret_b32.upper())
+        t = int(time.time()) // 30
+        for delta in (-1, 0, 1):
+            if hmac.compare_digest(_hotp(key, t + delta), code.strip()):
+                return True
+        return False
+    except Exception:
+        return False
+
+
 # ── Tokens ────────────────────────────────────────────────────────────────────
-# Format: base64url( username + "\n" + role + "\n" + ts + "\n" + hmac )
-# HMAC signs username\x00role\x00ts to avoid separator collisions.
+# Format: base64url( username + "\n" + kind + "\n" + ts + "\n" + hmac )
+# kind = role voor auth-tokens, "2fa" voor challenge-tokens
+
+def _make_token(username: str, kind: str) -> str:
+    ts = str(int(time.time()))
+    msg = f"{username}\x00{kind}\x00{ts}"
+    sig = hmac.new(_secret().encode(), msg.encode(), hashlib.sha256).hexdigest()
+    payload = f"{username}\n{kind}\n{ts}\n{sig}"
+    return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+
+
+def _verify_token_raw(token_b64: str):
+    """Returns (username, kind, ts) or None."""
+    try:
+        padded = token_b64 + "=" * (4 - len(token_b64) % 4)
+        raw = base64.urlsafe_b64decode(padded.encode()).decode()
+        username, kind, ts, sig = raw.split("\n", 3)
+        msg = f"{username}\x00{kind}\x00{ts}"
+        expected = hmac.new(_secret().encode(), msg.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        return (username, kind, int(ts))
+    except Exception:
+        return None
+
 
 def make_token(username: str, role: str) -> str:
-    ts = str(int(time.time()))
-    msg = f"{username}\x00{role}\x00{ts}"
-    sig = hmac.new(_secret().encode(), msg.encode(), hashlib.sha256).hexdigest()
-    payload = f"{username}\n{role}\n{ts}\n{sig}"
-    return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+    return _make_token(username, role)
 
 
 def verify_token(token_b64: str):
     """Returns (username, role) or None."""
-    try:
-        padded = token_b64 + "=" * (4 - len(token_b64) % 4)
-        raw = base64.urlsafe_b64decode(padded.encode()).decode()
-        username, role, ts, sig = raw.split("\n", 3)
-        msg = f"{username}\x00{role}\x00{ts}"
-        expected = hmac.new(_secret().encode(), msg.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, expected):
-            return None
-        if int(time.time()) - int(ts) > COOKIE_MAX_AGE:
-            return None
-        return (username, role)
-    except Exception:
+    result = _verify_token_raw(token_b64)
+    if not result:
         return None
+    username, role, ts = result
+    if role in ("2fa",):
+        return None
+    if int(time.time()) - ts > COOKIE_MAX_AGE:
+        return None
+    return (username, role)
+
+
+def make_challenge_token(username: str) -> str:
+    return _make_token(username, "2fa")
+
+
+def verify_challenge_token(token_b64: str) -> str | None:
+    """Returns username or None."""
+    result = _verify_token_raw(token_b64)
+    if not result:
+        return None
+    username, kind, ts = result
+    if kind != "2fa":
+        return None
+    if int(time.time()) - ts > CHALLENGE_MAX_AGE:
+        return None
+    return username
 
 
 # ── Cookie helpers ─────────────────────────────────────────────────────────────

@@ -2043,82 +2043,149 @@ h1, h2, h3, p { margin: 0; }
   }
 }
 
-/* ── Login ───────────────────────────────────────────────────────────────── */
+/* ── Login (Amazon-stijl) ────────────────────────────────────────────────── */
 .login-wrap {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: var(--c-brand);
-  padding: 24px;
+  background: var(--c-bg);
+  padding: 20px;
+  gap: 16px;
 }
-.login-box {
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.1);
-  border-radius: 16px;
-  padding: 36px 28px;
-  width: 100%;
-  max-width: 310px;
+.login-logo-top {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
+  gap: 6px;
 }
-.login-logo { opacity: .75; }
-.login-title {
-  font-size: 1.1rem;
+.login-brand-name {
+  font-size: 1.05rem;
   font-weight: 700;
-  color: var(--c-brand-text);
-  letter-spacing: .03em;
-  margin: 0;
-  text-align: center;
+  color: var(--c-text);
+  letter-spacing: .02em;
 }
-.login-hint {
-  font-size: 0.82rem;
-  color: rgba(199,218,212,.55);
-  margin: -6px 0 0;
-  text-align: center;
+.login-card {
+  background: var(--c-surface);
+  border: 1px solid #d5d9d9;
+  border-radius: var(--r);
+  padding: 28px 24px 22px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 2px 4px rgba(15,17,17,.08);
 }
-.login-form {
+.login-heading {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--c-text);
+  margin: 0 0 18px;
+}
+.login-sub {
+  font-size: 0.85rem;
+  color: var(--c-muted);
+  margin: -10px 0 14px;
+  line-height: 1.5;
+}
+
+/* Formuliervelden */
+.lf-group { margin-bottom: 14px; }
+.lf-label-row {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3px;
 }
-.login-form input {
-  background: rgba(0,0,0,.22);
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: var(--r);
-  padding: 11px 13px;
-  color: var(--c-brand-text);
-  font-size: 0.95rem;
-  width: 100%;
-  box-sizing: border-box;
-}
-.login-form input::placeholder { color: rgba(199,218,212,.35); }
-.login-form input:focus {
-  outline: none;
-  border-color: var(--c-gold);
-}
-.login-btn {
-  background: var(--c-gold);
-  color: var(--c-brand);
-  border: 0;
-  border-radius: var(--r);
-  padding: 11px;
+.lf-label {
+  display: block;
   font-weight: 700;
-  font-size: 0.9rem;
-  cursor: pointer;
+  font-size: 0.855rem;
+  color: var(--c-text);
+  margin-bottom: 3px;
+}
+.lf-input {
   width: 100%;
-  margin-top: 2px;
+  border: 1px solid #888c8c;
+  border-radius: var(--r-sm);
+  padding: 9px 10px;
+  font-size: 0.95rem;
+  color: var(--c-text);
+  background: #fff;
+  box-sizing: border-box;
+  outline: none;
+  font-family: var(--font);
 }
-.login-btn:hover { opacity: .85; }
-.login-error {
-  color: #fca5a5;
-  font-size: 0.82rem;
-  margin: 0;
+.lf-input:focus {
+  border-color: #007185;
+  box-shadow: 0 0 0 3px rgba(0,113,133,.15);
+}
+.lf-totp-input {
   text-align: center;
+  letter-spacing: .5em;
+  font-size: 1.4rem;
+  font-weight: 700;
+  padding: 12px;
 }
+
+/* Knoppen & links */
+.lf-btn {
+  width: 100%;
+  background: linear-gradient(to bottom, #f7ca6e, #f0b233);
+  border: 1px solid #c89411;
+  border-radius: var(--r-sm);
+  padding: 10px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--c-text);
+  cursor: pointer;
+  margin-top: 2px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12);
+  font-family: var(--font);
+}
+.lf-btn:hover  { background: linear-gradient(to bottom, #f9d080, #f2b93a); }
+.lf-btn:active { background: linear-gradient(to bottom, #ebb82e, #e8a91e); }
+.lf-btn:disabled { opacity: .6; cursor: default; }
+
+.lf-forgot {
+  font-size: 0.8rem;
+  color: #0066c0;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.lf-forgot:hover { text-decoration: underline; color: #c45500; }
+
+.lf-back-link {
+  display: block;
+  text-align: center;
+  margin-top: 16px;
+  font-size: 0.85rem;
+  color: #0066c0;
+  text-decoration: none;
+}
+.lf-back-link:hover { text-decoration: underline; }
+
+.lf-error-box {
+  background: #fff8f8;
+  border: 1px solid #e0a0a0;
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  color: #b00;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+.lf-info-box {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: #fefcf0;
+  border: 1px solid #f0d060;
+  border-radius: var(--r-sm);
+  font-size: 0.82rem;
+  color: var(--c-text);
+  line-height: 1.5;
+}
+
+/* Header-knoppen (donkere achtergrond) */
 .logout-btn {
   background: transparent;
   border: 0;
@@ -2129,8 +2196,6 @@ h1, h2, h3, p { margin: 0; }
   line-height: 1;
 }
 .logout-btn:hover { color: rgba(255,255,255,.85); }
-
-/* ── Header icon buttons ─────────────────────────────────────────────────── */
 .header-icon-btn {
   background: transparent;
   border: 0;
@@ -2172,42 +2237,79 @@ h1, h2, h3, p { margin: 0; }
 .user-name {
   flex: 1;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.user-badges { display: flex; gap: 4px; align-items: center; }
 .user-role-badge {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .role-admin    { background: rgba(33,63,57,.12); color: var(--c-brand); }
 .role-readonly { background: rgba(113,120,112,.12); color: var(--c-muted); }
-.user-self-tag {
-  font-size: 0.72rem;
-  color: var(--c-subtle);
-  font-style: italic;
+.role-totp     { background: rgba(242,195,107,.2); color: var(--c-gold-dark); }
+.user-self-tag { font-size: 0.72rem; color: var(--c-subtle); font-style: italic; }
+.danger-icon   { color: var(--c-red); }
+.users-divider { height: 1px; background: var(--c-border); margin: 4px 0; }
+.add-user-form { display: flex; flex-direction: column; gap: 10px; }
+.role-toggle-row { display: flex; gap: 16px; }
+.role-option {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.9rem; cursor: pointer; color: var(--c-text);
 }
-.danger-icon { color: var(--c-red); }
-.users-divider {
-  height: 1px;
-  background: var(--c-border);
-  margin: 4px 0;
-}
-.add-user-form {
+
+/* 2FA setup */
+.twofa-setup-box {
+  background: var(--c-bg);
+  border-radius: var(--r-sm);
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
-.role-toggle-row {
-  display: flex;
-  gap: 16px;
+.twofa-step {
+  font-size: 0.85rem;
+  color: var(--c-text);
+  margin: 0;
+  line-height: 1.4;
 }
-.role-option {
+.twofa-key-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  color: var(--c-text);
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
 }
+.twofa-key {
+  flex: 1;
+  font-family: monospace;
+  font-size: 0.85rem;
+  letter-spacing: .1em;
+  color: var(--c-text);
+  word-break: break-all;
+}
+.twofa-open-link {
+  font-size: 0.82rem;
+  color: #0066c0;
+  text-decoration: none;
+}
+.twofa-open-link:hover { text-decoration: underline; }
+.twofa-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--c-text);
+  padding: 4px 0;
+}
+.twofa-on-label { color: var(--c-brand); font-weight: 600; }

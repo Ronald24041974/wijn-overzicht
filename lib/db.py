@@ -15,9 +15,12 @@ def ensure_users_schema():
                     username      TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
                     role          TEXT NOT NULL DEFAULT 'readonly',
-                    created_at    BIGINT DEFAULT 0
+                    created_at    BIGINT DEFAULT 0,
+                    totp_secret   TEXT
                 )
             """)
+            # Migratie voor bestaande tabellen zonder totp_secret kolom
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT")
         conn.commit()
 
 
@@ -34,9 +37,13 @@ def get_user(username: str):
 def list_users():
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, username, role FROM users ORDER BY id")
+            cur.execute("SELECT id, username, role, totp_secret FROM users ORDER BY id")
             rows = cur.fetchall()
-    return [{"id": r["id"], "username": r["username"], "role": r["role"]} for r in rows]
+    return [
+        {"id": r["id"], "username": r["username"], "role": r["role"],
+         "totpEnabled": bool(r.get("totp_secret"))}
+        for r in rows
+    ]
 
 
 def create_user(username: str, password_hash: str, role: str):
@@ -79,6 +86,21 @@ def count_admins() -> int:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) AS c FROM users WHERE role='admin'")
             return cur.fetchone()["c"]
+
+
+def get_totp_secret(username: str):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT totp_secret FROM users WHERE username=%s", (username,))
+            row = cur.fetchone()
+    return row["totp_secret"] if row else None
+
+
+def set_totp_secret(username: str, secret):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET totp_secret=%s WHERE username=%s", (secret, username))
+        conn.commit()
 
 
 def get_db():

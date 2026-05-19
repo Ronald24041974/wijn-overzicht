@@ -35,6 +35,7 @@ let labelScan     = { file: null, previewUrl: null, status: '', error: '', mode:
 let cabinetsOpen  = false;
 let currentUser   = { username: '', role: 'admin' };
 let usersPanel    = { open: false, users: [], status: '', error: '' };
+let twoFASetup    = { active: false, secret: '', uri: '', status: '', error: '' };
 
 const root = document.querySelector('#root');
 
@@ -1537,6 +1538,13 @@ function listThumb(wine) {
     </div>
   `;
 }
+function icon2FA() {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="5" y="11" width="14" height="10" rx="2"/>
+    <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+  </svg>`;
+}
+
 function iconUsers() {
   return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -1642,6 +1650,65 @@ function bindEvents() {
       render();
     });
   });
+  /* 2FA instellen */
+  document.querySelector('#setup-2fa-btn')?.addEventListener('click', async () => {
+    twoFASetup = { active: false, secret: '', uri: '', status: 'loading', error: '' };
+    render();
+    const r = await fetch('/api/auth?action=setup-2fa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok) {
+      twoFASetup = { active: true, secret: data.secret || '', uri: data.uri || '', status: '', error: '' };
+    } else {
+      twoFASetup = { active: false, secret: '', uri: '', status: '', error: data.message || 'Mislukt.' };
+    }
+    render();
+  });
+  document.querySelector('#cancel-2fa-setup')?.addEventListener('click', () => {
+    twoFASetup = { active: false, secret: '', uri: '', status: '', error: '' };
+    render();
+  });
+  document.querySelector('#copy-twofa-key')?.addEventListener('click', () => {
+    navigator.clipboard?.writeText(twoFASetup.secret);
+    document.getElementById('copy-twofa-key').textContent = 'Gekopieerd!';
+  });
+  document.querySelector('#confirm-2fa-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const code = document.getElementById('confirm-2fa-code').value.trim();
+    if (code.length !== 6) return;
+    twoFASetup = { ...twoFASetup, status: 'saving', error: '' };
+    render();
+    const r = await fetch('/api/auth?action=confirm-2fa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: twoFASetup.secret, code }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok) {
+      twoFASetup = { active: false, secret: '', uri: '', status: '', error: '' };
+      // Herlaad gebruikerslijst
+      const ur = await fetch('/api/auth?action=users');
+      const ud = await ur.json().catch(() => ({}));
+      usersPanel = { ...usersPanel, users: ud.users || usersPanel.users };
+    } else {
+      twoFASetup = { ...twoFASetup, status: '', error: data.message || 'Onjuiste code.' };
+    }
+    render();
+  });
+  document.querySelector('#disable-2fa-btn')?.addEventListener('click', async () => {
+    if (!confirm('2FA uitschakelen?')) return;
+    const r = await fetch('/api/auth?action=disable-2fa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: currentUser.username }),
+    });
+    if (r.ok) {
+      const ur = await fetch('/api/auth?action=users');
+      const ud = await ur.json().catch(() => ({}));
+      usersPanel = { ...usersPanel, users: ud.users || usersPanel.users };
+      render();
+    }
+  });
+
   document.querySelector('#add-user-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -1862,24 +1929,78 @@ function getFormData(form) {
 /* ================================================
    GEBRUIKERSBEHEER
    ================================================ */
+function _formatTotpSecret(s) {
+  return s.match(/.{1,4}/g)?.join(' ') ?? s;
+}
+
 function renderUsersPanel() {
   const { users, status, error } = usersPanel;
   const roleLabel = r => r === 'admin' ? 'Beheerder' : 'Lezer';
+  const isSelf = u => u.username === currentUser.username;
+  const myUser = users.find(isSelf);
+  const myTotpOn = myUser?.totpEnabled;
+
   return `
     <div class="users-panel">
       ${error ? `<p class="users-error">${esc(error)}</p>` : ''}
+
       <ul class="users-list">
         ${users.map(u => `
           <li class="user-row">
             <span class="user-name">${esc(u.username)}</span>
-            <span class="user-role-badge ${u.role === 'admin' ? 'role-admin' : 'role-readonly'}">${roleLabel(u.role)}</span>
-            ${u.username !== currentUser.username ? `
+            <div class="user-badges">
+              <span class="user-role-badge ${u.role === 'admin' ? 'role-admin' : 'role-readonly'}">${roleLabel(u.role)}</span>
+              ${u.totpEnabled ? `<span class="user-role-badge role-totp" title="2FA ingeschakeld">${icon2FA()} 2FA</span>` : ''}
+            </div>
+            ${!isSelf(u) ? `
               <button class="icon-btn danger-icon" data-delete-user="${esc(u.username)}" title="Verwijderen">${iconTrash()}</button>
             ` : '<span class="user-self-tag">jij</span>'}
           </li>
         `).join('')}
       </ul>
+
+      <!-- 2FA beheer voor huidige gebruiker -->
       <div class="users-divider"></div>
+      <p class="form-group-label">Mijn tweestapsverificatie</p>
+      ${twoFASetup.active ? `
+        <div class="twofa-setup-box">
+          <p class="twofa-step">1. Open je authenticator-app (Google Authenticator, Authy, enz.)</p>
+          <p class="twofa-step">2. Scan de QR-code of voer de sleutel handmatig in:</p>
+          <div class="twofa-key-row">
+            <code class="twofa-key" id="twofa-key-text">${_formatTotpSecret(twoFASetup.secret)}</code>
+            <button type="button" class="ghost-button" id="copy-twofa-key" style="padding:4px 10px;font-size:.8rem">Kopieer</button>
+          </div>
+          <a href="${esc(twoFASetup.uri)}" class="twofa-open-link">→ Open in authenticator-app</a>
+          <p class="twofa-step">3. Voer de 6-cijferige code in om te bevestigen:</p>
+          ${twoFASetup.error ? `<p class="users-error">${esc(twoFASetup.error)}</p>` : ''}
+          <form id="confirm-2fa-form" style="display:flex;gap:8px;align-items:flex-end">
+            <label class="form-field" style="flex:1;margin:0">
+              <input type="text" id="confirm-2fa-code" class="lf-totp-input"
+                     inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                     autocomplete="one-time-code" placeholder="000000"
+                     style="text-align:center;letter-spacing:.3em;font-size:1.1rem" />
+            </label>
+            <button type="submit" class="save-button" ${twoFASetup.status === 'saving' ? 'disabled' : ''} style="white-space:nowrap">
+              ${twoFASetup.status === 'saving' ? iconSpinner() : 'Activeren'}
+            </button>
+            <button type="button" id="cancel-2fa-setup" class="ghost-button">Annuleren</button>
+          </form>
+        </div>
+      ` : myTotpOn ? `
+        <div class="twofa-status-row">
+          ${icon2FA()} <span class="twofa-on-label">2FA is ingeschakeld</span>
+          <button class="ghost-button" id="disable-2fa-btn" style="margin-left:auto">Uitschakelen</button>
+        </div>
+      ` : `
+        <div class="twofa-status-row">
+          <span style="color:var(--c-muted);font-size:.875rem">Nog niet ingeschakeld</span>
+          <button class="save-button" id="setup-2fa-btn" style="margin-left:auto;padding:6px 14px;font-size:.875rem">2FA instellen</button>
+        </div>
+      `}
+
+      <div class="users-divider"></div>
+
+      <!-- Gebruiker toevoegen -->
       <form id="add-user-form" class="add-user-form">
         <p class="form-group-label">Gebruiker toevoegen</p>
         <div class="form-row">
@@ -1915,42 +2036,125 @@ function renderUsersPanel() {
    INIT
    ================================================ */
 // ── Authenticatie ────────────────────────────────────────────────────────────
+function _loginLogoTop() {
+  return `
+    <div class="login-logo-top">
+      ${iconLogo(40)}
+      <span class="login-brand-name">Wijnoverzicht</span>
+    </div>
+  `;
+}
+
 function showLoginScreen(errorMsg = '', setupMode = false) {
-  const noUsers = setupMode;
   document.getElementById('root').innerHTML = `
     <div class="login-wrap">
-      <div class="login-box">
-        <div class="login-logo">${iconLogo(44)}</div>
-        <h1 class="login-title">Wijn&shy;overzicht</h1>
-        ${noUsers ? `<p class="login-hint">Maak het eerste beheerdersaccount aan.</p>` : ''}
-        ${errorMsg ? `<p class="login-error">${esc(errorMsg)}</p>` : ''}
-        <form class="login-form" id="login-form" autocomplete="on">
-          <input type="email"    id="login-user" placeholder="E-mailadres" autocomplete="username email" autofocus inputmode="email" />
-          <input type="password" id="login-pw"   placeholder="Wachtwoord"     autocomplete="${noUsers ? 'new-password' : 'current-password'}" />
-          <button type="submit" class="login-btn">${noUsers ? 'Account aanmaken' : 'Inloggen'}</button>
+      ${_loginLogoTop()}
+      <div class="login-card">
+        <h1 class="login-heading">${setupMode ? 'Account aanmaken' : 'Inloggen'}</h1>
+        ${setupMode ? `<p class="login-sub">Maak het eerste beheerdersaccount aan.</p>` : ''}
+        ${errorMsg ? `<div class="lf-error-box">${esc(errorMsg)}</div>` : ''}
+        <form id="login-form" autocomplete="on">
+          <div class="lf-group">
+            <label class="lf-label" for="login-user">E-mailadres</label>
+            <input type="email" id="login-user" class="lf-input"
+                   autocomplete="username email" autofocus inputmode="email" />
+          </div>
+          <div class="lf-group">
+            <div class="lf-label-row">
+              <label class="lf-label" for="login-pw">Wachtwoord</label>
+              ${!setupMode ? `<a href="#" id="forgot-pw" class="lf-forgot">Wachtwoord vergeten?</a>` : ''}
+            </div>
+            <input type="password" id="login-pw" class="lf-input"
+                   autocomplete="${setupMode ? 'new-password' : 'current-password'}" />
+          </div>
+          <button type="submit" class="lf-btn" id="login-submit">
+            ${setupMode ? 'Account aanmaken' : 'Inloggen'}
+          </button>
         </form>
+        <div id="forgot-info" class="lf-info-box" style="display:none">
+          <strong>Wachtwoord vergeten?</strong><br>
+          Vraag een beheerder om je wachtwoord te resetten via het gebruikersbeheer.
+          Ben jij de beheerder? Neem dan contact op of herstel het wachtwoord via de Neon-database.
+        </div>
       </div>
     </div>
   `;
+
+  document.getElementById('forgot-pw')?.addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('forgot-info').style.display = 'block';
+  });
+
   document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const username = document.getElementById('login-user').value.trim();
     const password = document.getElementById('login-pw').value;
     if (!username || !password) return;
-    const action = noUsers ? 'setup' : 'login';
-    const url = noUsers ? '/api/auth?action=setup' : '/api/auth';
+    const btn = document.getElementById('login-submit');
+    btn.disabled = true; btn.textContent = 'Even wachten…';
+    const url = setupMode ? '/api/auth?action=setup' : '/api/auth';
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
     const data = await r.json().catch(() => ({}));
+    if (r.ok && data.require2fa) {
+      showTwoFactorScreen(data.challengeToken);
+      return;
+    }
     if (r.ok) {
       currentUser = { username: data.username || username, role: data.role || 'admin' };
-      render();
-      loadWines();
+      render(); loadWines();
     } else {
-      showLoginScreen(data.message || 'Inloggen mislukt.', noUsers);
+      showLoginScreen(data.message || 'Inloggen mislukt.', setupMode);
+    }
+  });
+}
+
+function showTwoFactorScreen(challengeToken, errorMsg = '') {
+  document.getElementById('root').innerHTML = `
+    <div class="login-wrap">
+      ${_loginLogoTop()}
+      <div class="login-card">
+        <h1 class="login-heading">Verificatie</h1>
+        <p class="login-sub">Voer de 6-cijferige code uit je authenticator-app in.</p>
+        ${errorMsg ? `<div class="lf-error-box">${esc(errorMsg)}</div>` : ''}
+        <form id="totp-form" autocomplete="off">
+          <div class="lf-group">
+            <label class="lf-label" for="totp-code">Verificatiecode</label>
+            <input type="text" id="totp-code" class="lf-input lf-totp-input"
+                   inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                   autocomplete="one-time-code" autofocus placeholder="000 000" />
+          </div>
+          <button type="submit" class="lf-btn" id="totp-submit">Verifiëren</button>
+        </form>
+        <a href="#" id="back-login" class="lf-back-link">← Terug naar inloggen</a>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('back-login').addEventListener('click', e => {
+    e.preventDefault(); showLoginScreen();
+  });
+
+  document.getElementById('totp-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const code = document.getElementById('totp-code').value.replace(/\s/g, '');
+    if (code.length !== 6) return;
+    const btn = document.getElementById('totp-submit');
+    btn.disabled = true; btn.textContent = 'Controleren…';
+    const r = await fetch('/api/auth?action=verify-2fa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeToken, code }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok) {
+      currentUser = { username: data.username || '', role: data.role || 'readonly' };
+      render(); loadWines();
+    } else {
+      showTwoFactorScreen(challengeToken, data.message || 'Onjuiste code.');
     }
   });
 }
@@ -1968,7 +2172,6 @@ async function logout() {
       const data = await r.json().catch(() => ({}));
       currentUser = { username: data.username || '', role: data.role || 'readonly' };
     } else {
-      // Niet ingelogd — check of er al gebruikers zijn
       const status = await fetch('/api/auth?action=status').then(x => x.json()).catch(() => ({ hasUsers: true }));
       showLoginScreen('', !status.hasUsers);
       return;
