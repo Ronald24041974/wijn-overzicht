@@ -23,6 +23,12 @@ class handler(BaseHandler):
         parsed = urlparse(self.path)
         action = parse_qs(parsed.query).get("action", [""])[0]
 
+        if action == "status":
+            # Public: geeft terug of er al gebruikers bestaan (voor setup-detectie)
+            ensure_users_schema()
+            self.json_response(200, {"hasUsers": count_users() > 0})
+            return
+
         if action == "users":
             auth = require_admin(self)
             if not auth:

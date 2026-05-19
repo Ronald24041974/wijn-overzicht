@@ -1961,14 +1961,15 @@ async function logout() {
 (async () => {
   try {
     const r = await fetch('/api/auth');
-    if (!r.ok) {
-      // Check if no users exist yet → setup mode
-      const noUsers = await fetch('/api/auth?action=users').then(x => x.status === 401 ? false : x.json().then(d => d.users?.length === 0)).catch(() => false);
-      showLoginScreen('', noUsers);
+    if (r.ok) {
+      const data = await r.json().catch(() => ({}));
+      currentUser = { username: data.username || '', role: data.role || 'readonly' };
+    } else {
+      // Niet ingelogd — check of er al gebruikers zijn
+      const status = await fetch('/api/auth?action=status').then(x => x.json()).catch(() => ({ hasUsers: true }));
+      showLoginScreen('', !status.hasUsers);
       return;
     }
-    const data = await r.json().catch(() => ({}));
-    currentUser = { username: data.username || '', role: data.role || 'readonly' };
   } catch {
     showLoginScreen('Geen verbinding met de server.');
     return;
