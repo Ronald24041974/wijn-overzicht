@@ -1800,7 +1800,7 @@ function getFormData(form) {
    ================================================ */
 // ── Authenticatie ────────────────────────────────────────────────────────────
 function showLoginScreen(errorMsg = '') {
-  document.getElementById('app').innerHTML = `
+  document.getElementById('root').innerHTML = `
     <div class="login-wrap">
       <div class="login-box">
         <div class="login-logo">${iconLogo(48)}</div>
