@@ -2314,3 +2314,12 @@ h1, h2, h3, p { margin: 0; }
   padding: 4px 0;
 }
 .twofa-on-label { color: var(--c-brand); font-weight: 600; }
+.pw-save-ok {
+  font-size: 0.85rem;
+  color: #0a7c3e;
+  background: #edfaf3;
+  border: 1px solid #a3d9b8;
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  margin: 4px 0;
+}
