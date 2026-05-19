@@ -45,7 +45,8 @@ Elke nieuwe feature of bugfix volgt dit vaste proces:
 
 ```bash
 cd /Users/ronaldvanrooijen/wijn-vercel
-npx vercel dev
+python3 dev_server.py
 ```
 
-Vereist: `ANTHROPIC_API_KEY`, `DATABASE_URL`, `AUTH_SECRET` als environment variables (via `.env` of Vercel dashboard).
+Draait op `http://localhost:3000`. Leest `.env` automatisch in.
+Vereist: `DATABASE_URL` en `ANTHROPIC_API_KEY` in `.env`.
