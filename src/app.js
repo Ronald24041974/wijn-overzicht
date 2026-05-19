@@ -1759,6 +1759,7 @@ function bindEvents() {
     });
     const data = await r.json().catch(() => ({}));
     usersPanel = { ...usersPanel, status: '', pwError: r.ok ? '' : (data.message || 'Opslaan mislukt.'), pwOk: r.ok };
+    if (r.ok) e.target.reset();
     render();
   });
 
@@ -2009,7 +2010,7 @@ function renderUsersPanel() {
           </label>
         </div>
         ${usersPanel.pwError ? `<p class="users-error">${esc(usersPanel.pwError)}</p>` : ''}
-        ${usersPanel.pwOk ? `<p style="color:var(--c-brand);font-size:.85rem;margin:4px 0">Wachtwoord opgeslagen.</p>` : ''}
+        ${usersPanel.pwOk ? `<p class="pw-save-ok">Wachtwoord succesvol gewijzigd.</p>` : ''}
         <button type="submit" class="save-button" ${status === 'pw-saving' ? 'disabled' : ''}>
           ${status === 'pw-saving' ? iconSpinner() + ' Opslaan…' : 'Opslaan'}
         </button>
