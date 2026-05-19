@@ -1,6 +1,6 @@
 import sys, os, re, json
-sys.path.insert(0, os.path.dirname(__file__))
-from _helpers import BaseHandler, get_anthropic_client
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from lib.helpers import BaseHandler, get_anthropic_client
 
 
 def _fetch_suckling(name: str, year: str = "") -> float | None:

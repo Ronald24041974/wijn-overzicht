@@ -2,9 +2,9 @@ from http.server import BaseHTTPRequestHandler
 import json
 import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__))
-from _db import get_db, load_wines, add_wine, update_wine, serialize_wine
-from _helpers import BaseHandler
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from lib.db import get_db, load_wines, add_wine, update_wine, serialize_wine
+from lib.helpers import BaseHandler
 from urllib.parse import urlparse, parse_qs
 
 

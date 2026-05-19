@@ -1,8 +1,8 @@
 import sys, os, base64, time
-sys.path.insert(0, os.path.dirname(__file__))
-from _helpers import BaseHandler, download_image
-from _db import get_db
-from _image import remove_background, has_transparency, normalize_transparent, make_thumbnail
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from lib.helpers import BaseHandler, download_image
+from lib.db import get_db
+from lib.image import remove_background, has_transparency, normalize_transparent, make_thumbnail
 from urllib.parse import urlparse, parse_qs
 
 

@@ -1,6 +1,6 @@
 import sys, os, json
-sys.path.insert(0, os.path.dirname(__file__))
-from _helpers import BaseHandler, get_anthropic_client
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from lib.helpers import BaseHandler, get_anthropic_client
 
 
 class handler(BaseHandler):

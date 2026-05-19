@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/*.py": {
+      "includeFiles": "lib/**"
+    }
+  },
   "rewrites": [
     { "source": "/api/wine-thumb",       "destination": "/api/wine_thumb" },
     { "source": "/api/wine-image",       "destination": "/api/wine_image" },

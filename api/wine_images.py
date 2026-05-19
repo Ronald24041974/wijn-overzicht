@@ -1,8 +1,8 @@
 import sys, os, re, json
-sys.path.insert(0, os.path.dirname(__file__))
-from _helpers import BaseHandler, vivino_search_html, download_image, get_anthropic_client, sanitize_filename
-from _db import get_db
-from _image import remove_background, has_transparency, normalize_transparent
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from lib.helpers import BaseHandler, vivino_search_html, download_image, get_anthropic_client, sanitize_filename
+from lib.db import get_db
+from lib.image import remove_background, has_transparency, normalize_transparent
 from urllib.parse import urlparse, parse_qs, quote
 
 _TYPE_HINTS = {

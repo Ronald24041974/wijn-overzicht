@@ -1,6 +1,6 @@
 import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
-from _helpers import BaseHandler
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from lib.helpers import BaseHandler
 import time
 
 _START = str(int(time.time()))

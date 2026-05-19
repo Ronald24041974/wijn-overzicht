@@ -1,7 +1,7 @@
 import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
-from _helpers import BaseHandler
-from _db import get_db
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from lib.helpers import BaseHandler
+from lib.db import get_db
 from urllib.parse import urlparse, parse_qs
 
 
