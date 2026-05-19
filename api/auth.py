@@ -63,7 +63,9 @@ class handler(BaseHandler):
             result = verify_token(token)
             if result:
                 username, role = result
-                self.json_response(200, {"ok": True, "username": username, "role": role})
+                ensure_users_schema()
+                totp_secret = get_totp_secret(username)
+                self.json_response(200, {"ok": True, "username": username, "role": role, "totpEnabled": bool(totp_secret)})
                 return
         self.json_response(401, {"message": "Niet ingelogd."})
 

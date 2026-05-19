@@ -33,8 +33,8 @@ let zoomedWineId  = null;
 let uploadState   = { file: null, previewUrl: null, status: '', error: '' };
 let labelScan     = { file: null, previewUrl: null, status: '', error: '', mode: '' };
 let cabinetsOpen  = false;
-let currentUser   = { username: '', role: 'admin' };
-let usersPanel    = { open: false, users: [], status: '', error: '' };
+let currentUser   = { username: '', role: 'admin', totpEnabled: false };
+let usersPanel    = { open: false, users: [], status: '', error: '', pwError: '', pwOk: false };
 let twoFASetup    = { active: false, secret: '', uri: '', status: '', error: '' };
 
 const root = document.querySelector('#root');
@@ -377,7 +377,7 @@ function renderMobile(visible, selected, summary) {
   return `
     ${addOpen        ? mobileOverlay('Nieuwe fles toevoegen', 'close-add',  addPanel())            : ''}
     ${scanOpen       ? mobileOverlay('Fotoscan',              'close-scan', scanPanel(), true)      : ''}
-    ${usersPanel.open ? mobileOverlay('Gebruikers',           'close-users', renderUsersPanel())    : ''}
+    ${usersPanel.open ? mobileOverlay(isAdmin() ? 'Gebruikers' : 'Mijn account', 'close-users', renderUsersPanel()) : ''}
 
     <div class="mobile-shell">
       ${mobileHeader()}
@@ -403,7 +403,7 @@ function mobileHeader() {
       </button>
       <div class="mobile-header-actions">
         ${isAdmin() ? `<button class="mobile-fab" id="open-add" title="Nieuwe fles toevoegen">+</button>` : ''}
-        ${isAdmin() ? `<button class="header-icon-btn" id="open-users" title="Gebruikers beheren">${iconUsers()}</button>` : ''}
+        <button class="header-icon-btn" id="open-users" title="${isAdmin() ? 'Gebruikers beheren' : 'Mijn account'}">${iconUsers()}</button>
         <button class="logout-btn" id="logout-btn" title="Uitloggen">↩</button>
       </div>
     </header>
@@ -1625,15 +1625,17 @@ function bindEvents() {
 
   /* Gebruikersbeheer */
   document.querySelector('#open-users')?.addEventListener('click', async () => {
-    usersPanel = { open: true, users: [], status: 'loading', error: '' };
+    usersPanel = { open: true, users: [], status: isAdmin() ? 'loading' : '', error: '' };
     render();
-    const r = await fetch('/api/auth?action=users');
-    const data = await r.json().catch(() => ({}));
-    usersPanel = { open: true, users: data.users || [], status: '', error: r.ok ? '' : (data.message || 'Laden mislukt.') };
-    render();
+    if (isAdmin()) {
+      const r = await fetch('/api/auth?action=users');
+      const data = await r.json().catch(() => ({}));
+      usersPanel = { open: true, users: data.users || [], status: '', error: r.ok ? '' : (data.message || 'Laden mislukt.') };
+      render();
+    }
   });
   document.querySelector('#close-users')?.addEventListener('click', () => {
-    usersPanel = { open: false, users: [], status: '', error: '' };
+    usersPanel = { open: false, users: [], status: '', error: '', pwError: '', pwOk: false };
     render();
   });
   document.querySelectorAll('[data-delete-user]').forEach(btn => {
@@ -1685,10 +1687,12 @@ function bindEvents() {
     const data = await r.json().catch(() => ({}));
     if (r.ok) {
       twoFASetup = { active: false, secret: '', uri: '', status: '', error: '' };
-      // Herlaad gebruikerslijst
-      const ur = await fetch('/api/auth?action=users');
-      const ud = await ur.json().catch(() => ({}));
-      usersPanel = { ...usersPanel, users: ud.users || usersPanel.users };
+      currentUser = { ...currentUser, totpEnabled: true };
+      if (isAdmin()) {
+        const ur = await fetch('/api/auth?action=users');
+        const ud = await ur.json().catch(() => ({}));
+        usersPanel = { ...usersPanel, users: ud.users || usersPanel.users };
+      }
     } else {
       twoFASetup = { ...twoFASetup, status: '', error: data.message || 'Onjuiste code.' };
     }
@@ -1702,9 +1706,12 @@ function bindEvents() {
       body: JSON.stringify({ username: currentUser.username }),
     });
     if (r.ok) {
-      const ur = await fetch('/api/auth?action=users');
-      const ud = await ur.json().catch(() => ({}));
-      usersPanel = { ...usersPanel, users: ud.users || usersPanel.users };
+      currentUser = { ...currentUser, totpEnabled: false };
+      if (isAdmin()) {
+        const ur = await fetch('/api/auth?action=users');
+        const ud = await ur.json().catch(() => ({}));
+        usersPanel = { ...usersPanel, users: ud.users || usersPanel.users };
+      }
       render();
     }
   });
@@ -1725,6 +1732,33 @@ function bindEvents() {
     });
     const data = await r.json().catch(() => ({}));
     usersPanel = { open: true, users: data.users || usersPanel.users, status: '', error: r.ok ? '' : (data.message || 'Toevoegen mislukt.') };
+    render();
+  });
+
+  /* Wachtwoord wijzigen */
+  document.querySelector('#change-pw-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const newPw     = (fd.get('newPw') || '').trim();
+    const confirmPw = (fd.get('confirmPw') || '').trim();
+    if (!newPw) return;
+    if (newPw !== confirmPw) {
+      usersPanel = { ...usersPanel, pwError: 'Wachtwoorden komen niet overeen.', pwOk: false };
+      render(); return;
+    }
+    if (newPw.length < 8) {
+      usersPanel = { ...usersPanel, pwError: 'Wachtwoord moet minimaal 8 tekens bevatten.', pwOk: false };
+      render(); return;
+    }
+    usersPanel = { ...usersPanel, status: 'pw-saving', pwError: '', pwOk: false };
+    render();
+    const r = await fetch('/api/auth?action=change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: currentUser.username, newPassword: newPw }),
+    });
+    const data = await r.json().catch(() => ({}));
+    usersPanel = { ...usersPanel, status: '', pwError: r.ok ? '' : (data.message || 'Opslaan mislukt.'), pwOk: r.ok };
     render();
   });
 
@@ -1937,13 +1971,13 @@ function renderUsersPanel() {
   const { users, status, error } = usersPanel;
   const roleLabel = r => r === 'admin' ? 'Beheerder' : 'Lezer';
   const isSelf = u => u.username === currentUser.username;
-  const myUser = users.find(isSelf);
-  const myTotpOn = myUser?.totpEnabled;
+  const myTotpOn = currentUser.totpEnabled;
 
   return `
     <div class="users-panel">
       ${error ? `<p class="users-error">${esc(error)}</p>` : ''}
 
+      ${isAdmin() ? `
       <ul class="users-list">
         ${users.map(u => `
           <li class="user-row">
@@ -1958,6 +1992,28 @@ function renderUsersPanel() {
           </li>
         `).join('')}
       </ul>
+      ` : ''}
+
+      <!-- Wachtwoord wijzigen -->
+      <div class="users-divider"></div>
+      <p class="form-group-label">Mijn wachtwoord wijzigen</p>
+      <form id="change-pw-form" class="add-user-form">
+        <div class="form-row">
+          <label class="form-field">
+            Nieuw wachtwoord
+            <input type="password" name="newPw" autocomplete="new-password" minlength="8" placeholder="Minimaal 8 tekens" />
+          </label>
+          <label class="form-field">
+            Bevestigen
+            <input type="password" name="confirmPw" autocomplete="new-password" minlength="8" placeholder="Herhaal wachtwoord" />
+          </label>
+        </div>
+        ${usersPanel.pwError ? `<p class="users-error">${esc(usersPanel.pwError)}</p>` : ''}
+        ${usersPanel.pwOk ? `<p style="color:var(--c-brand);font-size:.85rem;margin:4px 0">Wachtwoord opgeslagen.</p>` : ''}
+        <button type="submit" class="save-button" ${status === 'pw-saving' ? 'disabled' : ''}>
+          ${status === 'pw-saving' ? iconSpinner() + ' Opslaan…' : 'Opslaan'}
+        </button>
+      </form>
 
       <!-- 2FA beheer voor huidige gebruiker -->
       <div class="users-divider"></div>
@@ -1998,6 +2054,7 @@ function renderUsersPanel() {
         </div>
       `}
 
+      ${isAdmin() ? `
       <div class="users-divider"></div>
 
       <!-- Gebruiker toevoegen -->
@@ -2027,6 +2084,7 @@ function renderUsersPanel() {
           ${status === 'saving' ? iconSpinner() + ' Opslaan…' : 'Toevoegen'}
         </button>
       </form>
+      ` : ''}
     </div>
   `;
 }
@@ -2062,7 +2120,7 @@ function showLoginScreen(errorMsg = '', setupMode = false) {
           <div class="lf-group">
             <div class="lf-label-row">
               <label class="lf-label" for="login-pw">Wachtwoord</label>
-              ${!setupMode ? `<a href="#" id="forgot-pw" class="lf-forgot">Wachtwoord vergeten?</a>` : ''}
+              ${!setupMode ? `<a href="#" class="lf-forgot" onclick="event.preventDefault();document.getElementById('forgot-info').style.display='block'">Wachtwoord vergeten?</a>` : ''}
             </div>
             <input type="password" id="login-pw" class="lf-input"
                    autocomplete="${setupMode ? 'new-password' : 'current-password'}" />
@@ -2079,11 +2137,6 @@ function showLoginScreen(errorMsg = '', setupMode = false) {
       </div>
     </div>
   `;
-
-  document.getElementById('forgot-pw')?.addEventListener('click', e => {
-    e.preventDefault();
-    document.getElementById('forgot-info').style.display = 'block';
-  });
 
   document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -2104,7 +2157,7 @@ function showLoginScreen(errorMsg = '', setupMode = false) {
       return;
     }
     if (r.ok) {
-      currentUser = { username: data.username || username, role: data.role || 'admin' };
+      currentUser = { username: data.username || username, role: data.role || 'admin', totpEnabled: data.totpEnabled || false };
       render(); loadWines();
     } else {
       showLoginScreen(data.message || 'Inloggen mislukt.', setupMode);
@@ -2151,7 +2204,7 @@ function showTwoFactorScreen(challengeToken, errorMsg = '') {
     });
     const data = await r.json().catch(() => ({}));
     if (r.ok) {
-      currentUser = { username: data.username || '', role: data.role || 'readonly' };
+      currentUser = { username: data.username || '', role: data.role || 'readonly', totpEnabled: data.totpEnabled || false };
       render(); loadWines();
     } else {
       showTwoFactorScreen(challengeToken, data.message || 'Onjuiste code.');
@@ -2170,7 +2223,7 @@ async function logout() {
     const r = await fetch('/api/auth');
     if (r.ok) {
       const data = await r.json().catch(() => ({}));
-      currentUser = { username: data.username || '', role: data.role || 'readonly' };
+      currentUser = { username: data.username || '', role: data.role || 'readonly', totpEnabled: data.totpEnabled || false };
     } else {
       const status = await fetch('/api/auth?action=status').then(x => x.json()).catch(() => ({ hasUsers: true }));
       showLoginScreen('', !status.hasUsers);
