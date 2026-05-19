@@ -1,10 +1,12 @@
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from lib.auth import check_auth
 from lib.helpers import BaseHandler, get_anthropic_client
 
 
 class handler(BaseHandler):
     def do_POST(self):
+        if not check_auth(self): return
         try:
             data = self.read_json()
             client = get_anthropic_client()

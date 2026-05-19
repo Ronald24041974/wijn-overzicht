@@ -4,6 +4,14 @@
       "includeFiles": "lib/**"
     }
   },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive, nosnippet" }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/api/wine-thumb",       "destination": "/api/wine_thumb" },
     { "source": "/api/wine-image",       "destination": "/api/wine_image" },

@@ -396,6 +396,7 @@ function mobileHeader() {
       </button>
       <div class="mobile-header-actions">
         <button class="mobile-fab" id="open-add" title="Nieuwe fles toevoegen">+</button>
+        <button class="logout-btn" id="logout-btn" title="Uitloggen">↩</button>
       </div>
     </header>
   `;
@@ -1555,6 +1556,7 @@ function bindEvents() {
   document.querySelector('#toggle-cabinets')?.addEventListener('click', () => { cabinetsOpen = !cabinetsOpen; render(); });
 
   /* Add / scan panels */
+  document.querySelector('#logout-btn')?.addEventListener('click', logout);
   document.querySelector('#open-add')?.addEventListener('click', () => { addOpen = true; render(); });
   document.querySelector('#open-scan')?.addEventListener('click', () => { scanOpen = true; render(); });
   document.querySelector('#close-add')?.addEventListener('click', () => {
@@ -1796,25 +1798,48 @@ function getFormData(form) {
 /* ================================================
    INIT
    ================================================ */
-render();
-loadWines();
-
-// Versiecheck: herlaad de app als de server is herstart
-// localStorage blijft bewaard na afsluiten PWA (sessionStorage niet)
-// location.replace met ?nocache= parameter omzeilt iOS PWA-cache
-(async () => {
-  try {
-    if (location.search.includes('nocache')) {
-      history.replaceState(null, '', '/');
-    }
-    const r = await fetch('/api/version');
-    const { version } = await r.json();
-    const stored = localStorage.getItem('appVersion');
-    if (stored && stored !== version && !location.search.includes('nocache')) {
-      localStorage.setItem('appVersion', version);
-      location.replace('/?nocache=' + version);
+// ── Authenticatie ────────────────────────────────────────────────────────────
+function showLoginScreen(errorMsg = '') {
+  document.getElementById('app').innerHTML = `
+    <div class="login-wrap">
+      <div class="login-box">
+        <div class="login-logo">${iconLogo(48)}</div>
+        <h1 class="login-title">Wijn Overzicht</h1>
+        ${errorMsg ? `<p class="login-error">${esc(errorMsg)}</p>` : ''}
+        <form class="login-form" id="login-form">
+          <input type="password" id="login-pw" placeholder="Wachtwoord" autocomplete="current-password" autofocus />
+          <button type="submit" class="login-btn">Inloggen</button>
+        </form>
+      </div>
+    </div>
+  `;
+  document.getElementById('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const pw = document.getElementById('login-pw').value;
+    const r = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    if (r.ok) {
+      location.reload();
     } else {
-      localStorage.setItem('appVersion', version);
+      showLoginScreen('Onjuist wachtwoord.');
     }
-  } catch { /* geen verbinding, stil doorgaan */ }
+  });
+}
+
+async function logout() {
+  await fetch('/api/auth?action=logout', { method: 'POST' });
+  showLoginScreen();
+}
+
+(async () => {
+  const r = await fetch('/api/auth');
+  if (!r.ok) {
+    showLoginScreen();
+    return;
+  }
+  render();
+  loadWines();
 })();

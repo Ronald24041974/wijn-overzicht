@@ -1,5 +1,6 @@
 import sys, os, re, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from lib.auth import check_auth
 from lib.helpers import BaseHandler, vivino_search_html, download_image, get_anthropic_client, sanitize_filename
 from lib.db import get_db
 from lib.image import remove_background, has_transparency, normalize_transparent
@@ -69,6 +70,7 @@ def _find_online_and_store_proposed(name: str, wine_type: str, year: str) -> boo
 
 class handler(BaseHandler):
     def do_GET(self):
+        if not check_auth(self): return
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         name = (params.get("name", [""])[0]).strip()
