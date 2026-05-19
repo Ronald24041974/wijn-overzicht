@@ -1883,7 +1883,10 @@ function renderUsersPanel() {
       <form id="add-user-form" class="add-user-form">
         <p class="form-group-label">Gebruiker toevoegen</p>
         <div class="form-row">
-          ${formField('Gebruikersnaam', 'newUsername', '', true)}
+          <label class="form-field">
+            E-mailadres
+            <input type="email" name="newUsername" required inputmode="email" autocomplete="off" />
+          </label>
           <label class="form-field">
             Wachtwoord
             <input type="password" name="newPassword" autocomplete="new-password" />
@@ -1922,7 +1925,7 @@ function showLoginScreen(errorMsg = '', setupMode = false) {
         ${noUsers ? `<p class="login-hint">Maak het eerste beheerdersaccount aan.</p>` : ''}
         ${errorMsg ? `<p class="login-error">${esc(errorMsg)}</p>` : ''}
         <form class="login-form" id="login-form" autocomplete="on">
-          <input type="text"     id="login-user" placeholder="Gebruikersnaam" autocomplete="username" autofocus />
+          <input type="email"    id="login-user" placeholder="E-mailadres" autocomplete="username email" autofocus inputmode="email" />
           <input type="password" id="login-pw"   placeholder="Wachtwoord"     autocomplete="${noUsers ? 'new-password' : 'current-password'}" />
           <button type="submit" class="login-btn">${noUsers ? 'Account aanmaken' : 'Inloggen'}</button>
         </form>

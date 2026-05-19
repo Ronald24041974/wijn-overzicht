@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 
 
 def _valid_username(s: str) -> bool:
-    return bool(s) and len(s) <= 40 and all(c.isalnum() or c in "-_." for c in s)
+    return bool(s) and len(s) <= 100 and all(c.isalnum() or c in "-_.@+" for c in s)
 
 
 class handler(BaseHandler):
