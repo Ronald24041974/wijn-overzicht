@@ -1835,9 +1835,14 @@ async function logout() {
 }
 
 (async () => {
-  const r = await fetch('/api/auth');
-  if (!r.ok) {
-    showLoginScreen();
+  try {
+    const r = await fetch('/api/auth');
+    if (!r.ok) {
+      showLoginScreen();
+      return;
+    }
+  } catch {
+    showLoginScreen('Geen verbinding met de server.');
     return;
   }
   render();
