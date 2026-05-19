@@ -1061,20 +1061,44 @@ async function handleLabelScan() {
   render();
 }
 
-async function uploadImageFile(wineName, file) {
-  const imageData = await new Promise((resolve, reject) => {
+async function compressImageFile(file, { maxSize = 1600, quality = 0.85 } = {}) {
+  const dataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Kon de foto niet inlezen.'));
     reader.readAsDataURL(file);
   });
+  const img = await new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error('Kon de foto niet decoderen (HEIC? Kies een JPG/PNG).'));
+    el.src = dataUrl;
+  });
+  const scale = Math.min(1, maxSize / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+  return compressedDataUrl.split(',')[1];
+}
+
+async function uploadImageFile(wineName, file) {
+  const imageData = await compressImageFile(file);
   const r = await fetch('/api/upload-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: wineName, imageData }),
   });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.message || 'Uploaden mislukt');
+  let data = null;
+  try { data = await r.json(); } catch { /* niet-JSON response */ }
+  if (!r.ok) {
+    if (r.status === 413) throw new Error('Foto is te groot voor de server.');
+    throw new Error(data?.message || `Uploaden mislukt (status ${r.status}).`);
+  }
   return data;
 }
 
