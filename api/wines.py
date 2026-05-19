@@ -3,7 +3,7 @@ import json
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from lib.auth import check_auth
+from lib.auth import check_auth, require_admin
 from lib.db import get_db, load_wines, add_wine, update_wine, serialize_wine
 from lib.helpers import BaseHandler
 from urllib.parse import urlparse, parse_qs
@@ -16,7 +16,7 @@ class handler(BaseHandler):
         self.json_response(200, {"wines": load_wines()})
 
     def do_POST(self):
-        if not check_auth(self): return
+        if not require_admin(self): return
         try:
             data = self.read_json()
             wine = add_wine(data)
@@ -25,7 +25,7 @@ class handler(BaseHandler):
             self.json_response(400, {"message": str(e)})
 
     def do_PATCH(self):
-        if not check_auth(self): return
+        if not require_admin(self): return
         try:
             patch = self.read_json()
             wine = update_wine(patch)
@@ -34,7 +34,7 @@ class handler(BaseHandler):
             self.json_response(400, {"message": str(e)})
 
     def do_DELETE(self):
-        if not check_auth(self): return
+        if not require_admin(self): return
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         row_number = (params.get("rowNumber", [""])[0]).strip()

@@ -1,6 +1,6 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from lib.auth import check_auth
+from lib.auth import check_auth, require_admin
 from lib.helpers import BaseHandler
 from lib.db import get_db
 from urllib.parse import urlparse, parse_qs
@@ -31,7 +31,7 @@ class handler(BaseHandler):
         self.wfile.write(img_bytes)
 
     def do_DELETE(self):
-        if not check_auth(self): return
+        if not require_admin(self): return
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         name = (params.get("name", [""])[0]).strip()

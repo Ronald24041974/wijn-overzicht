@@ -4,6 +4,83 @@ import psycopg2.extras
 import time
 
 
+# ── Users table ────────────────────────────────────────────────────────────────
+
+def ensure_users_schema():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id            SERIAL PRIMARY KEY,
+                    username      TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role          TEXT NOT NULL DEFAULT 'readonly',
+                    created_at    BIGINT DEFAULT 0
+                )
+            """)
+        conn.commit()
+
+
+def get_user(username: str):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, username, password_hash, role FROM users WHERE username=%s",
+                (username,)
+            )
+            return cur.fetchone()
+
+
+def list_users():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, username, role FROM users ORDER BY id")
+            rows = cur.fetchall()
+    return [{"id": r["id"], "username": r["username"], "role": r["role"]} for r in rows]
+
+
+def create_user(username: str, password_hash: str, role: str):
+    now = int(time.time())
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (username, password_hash, role, created_at) VALUES (%s, %s, %s, %s)",
+                (username, password_hash, role, now)
+            )
+        conn.commit()
+
+
+def delete_user(username: str):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM users WHERE username=%s", (username,))
+        conn.commit()
+
+
+def update_password(username: str, password_hash: str):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET password_hash=%s WHERE username=%s",
+                (password_hash, username)
+            )
+        conn.commit()
+
+
+def count_users() -> int:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS c FROM users")
+            return cur.fetchone()["c"]
+
+
+def count_admins() -> int:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS c FROM users WHERE role='admin'")
+            return cur.fetchone()["c"]
+
+
 def get_db():
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     conn.cursor_factory = psycopg2.extras.RealDictCursor

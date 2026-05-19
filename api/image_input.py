@@ -1,6 +1,6 @@
 import sys, os, base64, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from lib.auth import check_auth
+from lib.auth import require_admin
 from lib.helpers import BaseHandler, download_image
 from lib.db import get_db
 from lib.image import remove_background, has_transparency, normalize_transparent, make_thumbnail
@@ -9,7 +9,7 @@ from urllib.parse import urlparse, parse_qs
 
 class handler(BaseHandler):
     def do_POST(self):
-        if not check_auth(self): return
+        if not require_admin(self): return
         parsed = urlparse(self.path)
         mode = parse_qs(parsed.query).get("mode", [""])[0]
         try:

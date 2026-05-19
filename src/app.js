@@ -33,8 +33,12 @@ let zoomedWineId  = null;
 let uploadState   = { file: null, previewUrl: null, status: '', error: '' };
 let labelScan     = { file: null, previewUrl: null, status: '', error: '', mode: '' };
 let cabinetsOpen  = false;
+let currentUser   = { username: '', role: 'admin' };
+let usersPanel    = { open: false, users: [], status: '', error: '' };
 
 const root = document.querySelector('#root');
+
+function isAdmin() { return currentUser.role === 'admin'; }
 
 
 /* ================================================
@@ -297,10 +301,11 @@ function renderDesktop(visible, selected, summary) {
           </div>
         </button>
 
+        ${isAdmin() ? `
         <div class="sidebar-actions">
           <button class="primary-action" id="open-add">+ Nieuwe fles</button>
           <button class="secondary-action" id="open-scan">Fotoscan</button>
-        </div>
+        </div>` : ''}
 
         <label class="search">
           <span>Zoeken</span>
@@ -369,8 +374,9 @@ function renderDesktop(visible, selected, summary) {
    ================================================ */
 function renderMobile(visible, selected, summary) {
   return `
-    ${addOpen  ? mobileOverlay('Nieuwe fles toevoegen', 'close-add',  addPanel())  : ''}
-    ${scanOpen ? mobileOverlay('Fotoscan',              'close-scan', scanPanel(), true) : ''}
+    ${addOpen        ? mobileOverlay('Nieuwe fles toevoegen', 'close-add',  addPanel())            : ''}
+    ${scanOpen       ? mobileOverlay('Fotoscan',              'close-scan', scanPanel(), true)      : ''}
+    ${usersPanel.open ? mobileOverlay('Gebruikers',           'close-users', renderUsersPanel())    : ''}
 
     <div class="mobile-shell">
       ${mobileHeader()}
@@ -395,7 +401,8 @@ function mobileHeader() {
         <span class="mobile-brand-name">Wijnoverzicht</span>
       </button>
       <div class="mobile-header-actions">
-        <button class="mobile-fab" id="open-add" title="Nieuwe fles toevoegen">+</button>
+        ${isAdmin() ? `<button class="mobile-fab" id="open-add" title="Nieuwe fles toevoegen">+</button>` : ''}
+        ${isAdmin() ? `<button class="header-icon-btn" id="open-users" title="Gebruikers beheren">${iconUsers()}</button>` : ''}
         <button class="logout-btn" id="logout-btn" title="Uitloggen">↩</button>
       </div>
     </header>
@@ -408,7 +415,7 @@ function mobileNav() {
     { id: 'detail',    label: 'Detail',  icon: iconWine()     },
     { id: 'cabinets',  label: 'Kasten',  icon: iconCabinets() },
     { id: 'analytics', label: 'Analyse', icon: iconChart()    },
-    { id: 'scan',      label: 'Scan',    icon: iconCamera(), isScan: true },
+    ...(isAdmin() ? [{ id: 'scan', label: 'Scan', icon: iconCamera(), isScan: true }] : []),
   ];
   return `
     <nav class="mobile-nav">
@@ -640,13 +647,14 @@ function editorPanel(wine) {
         <button class="step-button img-zoom-btn" id="open-zoom" title="Vergroot afbeelding">
           ${iconZoom()}
         </button>
+        ${isAdmin() ? `
         <div class="img-top-right-btns">
           <button class="step-button img-delete-btn" id="delete-img" title="Afbeelding verwijderen">${iconTrash()}</button>
           <button class="step-button img-picker-btn" id="open-img-picker"
                   title="${imagePicker.open && imagePicker.wineId === wine.id ? 'Sluiten' : 'Afbeelding wijzigen'}">
             ${imagePicker.open && imagePicker.wineId === wine.id ? iconClose() : iconPhoto()}
           </button>
-        </div>
+        </div>` : ''}
       </div>
       ${imagePicker.open && imagePicker.wineId === wine.id ? renderImagePicker(wine) : ''}
 
@@ -734,10 +742,11 @@ function editorPanel(wine) {
           </label>
         </div>
 
+        ${isAdmin() ? `
         <div class="form-actions-row">
           <button class="save-button" style="flex:1">Opslaan</button>
           <button type="button" class="danger-button" id="delete-wine" style="flex:1">Verwijder wijn</button>
-        </div>
+        </div>` : ''}
       </form>
     </section>
   `;
@@ -1528,6 +1537,15 @@ function listThumb(wine) {
     </div>
   `;
 }
+function iconUsers() {
+  return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  </svg>`;
+}
+
 function iconLogo(size = 32) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 32 32" fill="none">
     <path d="M15 22 C11 21.5 4 17 4 12 C4 7 8.5 3 9 2 L23 2 C23.5 3 28 7 28 12 C28 17 21 21.5 17 22 Z" fill="#213f39"/>
@@ -1595,6 +1613,52 @@ function bindEvents() {
   document.querySelector('#do-lookup')?.addEventListener('click', handleLookup);
   document.querySelector('#lookup-name')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); handleLookup(); }
+  });
+
+  /* Gebruikersbeheer */
+  document.querySelector('#open-users')?.addEventListener('click', async () => {
+    usersPanel = { open: true, users: [], status: 'loading', error: '' };
+    render();
+    const r = await fetch('/api/auth?action=users');
+    const data = await r.json().catch(() => ({}));
+    usersPanel = { open: true, users: data.users || [], status: '', error: r.ok ? '' : (data.message || 'Laden mislukt.') };
+    render();
+  });
+  document.querySelector('#close-users')?.addEventListener('click', () => {
+    usersPanel = { open: false, users: [], status: '', error: '' };
+    render();
+  });
+  document.querySelectorAll('[data-delete-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const username = btn.dataset.deleteUser;
+      if (!confirm(`Gebruiker "${username}" verwijderen?`)) return;
+      const r = await fetch(`/api/auth?username=${encodeURIComponent(username)}`, { method: 'DELETE' });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok) {
+        usersPanel = { ...usersPanel, users: data.users || [], error: '' };
+      } else {
+        usersPanel = { ...usersPanel, error: data.message || 'Verwijderen mislukt.' };
+      }
+      render();
+    });
+  });
+  document.querySelector('#add-user-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const username = (fd.get('newUsername') || '').trim();
+    const password = (fd.get('newPassword') || '').trim();
+    const role     = fd.get('newRole') || 'readonly';
+    if (!username || !password) return;
+    usersPanel = { ...usersPanel, status: 'saving', error: '' };
+    render();
+    const r = await fetch('/api/auth?action=add-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role }),
+    });
+    const data = await r.json().catch(() => ({}));
+    usersPanel = { open: true, users: data.users || usersPanel.users, status: '', error: r.ok ? '' : (data.message || 'Toevoegen mislukt.') };
+    render();
   });
 
   /* Mobile nav tabs */
@@ -1796,41 +1860,101 @@ function getFormData(form) {
 
 
 /* ================================================
+   GEBRUIKERSBEHEER
+   ================================================ */
+function renderUsersPanel() {
+  const { users, status, error } = usersPanel;
+  const roleLabel = r => r === 'admin' ? 'Beheerder' : 'Lezer';
+  return `
+    <div class="users-panel">
+      ${error ? `<p class="users-error">${esc(error)}</p>` : ''}
+      <ul class="users-list">
+        ${users.map(u => `
+          <li class="user-row">
+            <span class="user-name">${esc(u.username)}</span>
+            <span class="user-role-badge ${u.role === 'admin' ? 'role-admin' : 'role-readonly'}">${roleLabel(u.role)}</span>
+            ${u.username !== currentUser.username ? `
+              <button class="icon-btn danger-icon" data-delete-user="${esc(u.username)}" title="Verwijderen">${iconTrash()}</button>
+            ` : '<span class="user-self-tag">jij</span>'}
+          </li>
+        `).join('')}
+      </ul>
+      <div class="users-divider"></div>
+      <form id="add-user-form" class="add-user-form">
+        <p class="form-group-label">Gebruiker toevoegen</p>
+        <div class="form-row">
+          ${formField('Gebruikersnaam', 'newUsername', '', true)}
+          <label class="form-field">
+            Wachtwoord
+            <input type="password" name="newPassword" autocomplete="new-password" />
+          </label>
+        </div>
+        <div class="role-toggle-row">
+          <label class="role-option">
+            <input type="radio" name="newRole" value="readonly" checked />
+            <span>Lezer</span>
+          </label>
+          <label class="role-option">
+            <input type="radio" name="newRole" value="admin" />
+            <span>Beheerder</span>
+          </label>
+        </div>
+        <button type="submit" class="save-button" ${status === 'saving' ? 'disabled' : ''}>
+          ${status === 'saving' ? iconSpinner() + ' Opslaan…' : 'Toevoegen'}
+        </button>
+      </form>
+    </div>
+  `;
+}
+
+
+/* ================================================
    INIT
    ================================================ */
 // ── Authenticatie ────────────────────────────────────────────────────────────
-function showLoginScreen(errorMsg = '') {
+function showLoginScreen(errorMsg = '', setupMode = false) {
+  const noUsers = setupMode;
   document.getElementById('root').innerHTML = `
     <div class="login-wrap">
       <div class="login-box">
-        <div class="login-logo">${iconLogo(48)}</div>
-        <h1 class="login-title">Wijn Overzicht</h1>
+        <div class="login-logo">${iconLogo(44)}</div>
+        <h1 class="login-title">Wijn&shy;overzicht</h1>
+        ${noUsers ? `<p class="login-hint">Maak het eerste beheerdersaccount aan.</p>` : ''}
         ${errorMsg ? `<p class="login-error">${esc(errorMsg)}</p>` : ''}
-        <form class="login-form" id="login-form">
-          <input type="password" id="login-pw" placeholder="Wachtwoord" autocomplete="current-password" autofocus />
-          <button type="submit" class="login-btn">Inloggen</button>
+        <form class="login-form" id="login-form" autocomplete="on">
+          <input type="text"     id="login-user" placeholder="Gebruikersnaam" autocomplete="username" autofocus />
+          <input type="password" id="login-pw"   placeholder="Wachtwoord"     autocomplete="${noUsers ? 'new-password' : 'current-password'}" />
+          <button type="submit" class="login-btn">${noUsers ? 'Account aanmaken' : 'Inloggen'}</button>
         </form>
       </div>
     </div>
   `;
   document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const pw = document.getElementById('login-pw').value;
-    const r = await fetch('/api/auth', {
+    const username = document.getElementById('login-user').value.trim();
+    const password = document.getElementById('login-pw').value;
+    if (!username || !password) return;
+    const action = noUsers ? 'setup' : 'login';
+    const url = noUsers ? '/api/auth?action=setup' : '/api/auth';
+    const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pw }),
+      body: JSON.stringify({ username, password }),
     });
+    const data = await r.json().catch(() => ({}));
     if (r.ok) {
-      location.reload();
+      currentUser = { username: data.username || username, role: data.role || 'admin' };
+      render();
+      loadWines();
     } else {
-      showLoginScreen('Onjuist wachtwoord.');
+      showLoginScreen(data.message || 'Inloggen mislukt.', noUsers);
     }
   });
 }
 
 async function logout() {
   await fetch('/api/auth?action=logout', { method: 'POST' });
+  currentUser = { username: '', role: 'admin' };
   showLoginScreen();
 }
 
@@ -1838,9 +1962,13 @@ async function logout() {
   try {
     const r = await fetch('/api/auth');
     if (!r.ok) {
-      showLoginScreen();
+      // Check if no users exist yet → setup mode
+      const noUsers = await fetch('/api/auth?action=users').then(x => x.status === 401 ? false : x.json().then(d => d.users?.length === 0)).catch(() => false);
+      showLoginScreen('', noUsers);
       return;
     }
+    const data = await r.json().catch(() => ({}));
+    currentUser = { username: data.username || '', role: data.role || 'readonly' };
   } catch {
     showLoginScreen('Geen verbinding met de server.');
     return;

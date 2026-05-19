@@ -31,6 +31,15 @@ import psycopg2.extras
 def create_schema(conn):
     with conn.cursor() as cur:
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id            SERIAL PRIMARY KEY,
+                username      TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role          TEXT NOT NULL DEFAULT 'readonly',
+                created_at    BIGINT DEFAULT 0
+            )
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS wines (
                 id              SERIAL PRIMARY KEY,
                 name            TEXT,
