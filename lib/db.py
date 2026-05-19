@@ -19,7 +19,7 @@ def ensure_users_schema():
                     totp_secret   TEXT
                 )
             """)
-            # Migratie voor bestaande tabellen zonder totp_secret kolom
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at BIGINT DEFAULT 0")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT")
         conn.commit()
 
