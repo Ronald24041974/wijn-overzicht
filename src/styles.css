@@ -2121,10 +2121,11 @@ h1, h2, h3, p { margin: 0; }
 }
 .lf-totp-input {
   text-align: center;
-  letter-spacing: .5em;
-  font-size: 1.4rem;
+  letter-spacing: .6em;
+  font-size: 2rem;
   font-weight: 700;
-  padding: 12px;
+  padding: 16px 12px;
+  height: 70px;
 }
 
 /* Knoppen & links */
