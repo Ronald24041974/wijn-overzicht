@@ -10,13 +10,13 @@ Elke nieuwe feature of bugfix volgt dit vaste proces:
    ```
 
 2. **Code schrijven en committen op de feature branch**
-   - Commits mogen tussentijds, logisch gegroepeerd
-   - Nooit direct op `main` werken
 
 3. **Lokaal testen — wacht op akkoord van de gebruiker**
-   - Start de lokale dev-server: `npx vercel dev` (vanuit `/Users/ronaldvanrooijen/wijn-vercel/`)
-   - Meld aan de gebruiker dat de feature klaar is om te testen op `http://localhost:3000`
-   - **Wacht op expliciete goedkeuring** voordat verder gegaan wordt
+   ```
+   python3 dev_server.py
+   ```
+   Meld aan de gebruiker dat de feature klaar is om te testen op `http://localhost:3000`.
+   **Wacht op expliciete goedkeuring** voordat verder gegaan wordt.
 
 4. **Na akkoord: push feature branch naar remote**
    ```
@@ -31,22 +31,45 @@ Elke nieuwe feature of bugfix volgt dit vaste proces:
    ```
 
 6. **Vercel deploy**
-   - Vercel deployt automatisch zodra `main` gepusht wordt
-   - Bevestig de live deploy door de productie-URL te testen
+   Vercel deployt automatisch zodra `main` gepusht wordt.
+
+---
 
 ## Projectoverzicht
 
-- **Stack**: Vanilla JS PWA (geen framework) + Python serverless functies op Vercel + Neon PostgreSQL
-- **Vercel limiet**: max 12 serverless functies in `api/`; gedeelde code staat in `lib/` (meegenomen via `vercel.json` → `includeFiles: "lib/**"`)
-- **Auth**: HMAC-SHA256 tokens in HttpOnly Secure cookies (30 dagen); PBKDF2 wachtwoorden; optionele TOTP 2FA (RFC 6238, puur stdlib)
-- **Taal**: communiceer altijd in het Nederlands met de gebruiker
+- **Stack:** Vanilla JS PWA + Python serverless functies (Vercel) + Neon PostgreSQL
+- **Repo:** `github.com/Ronald24041974/wijn-overzicht`
+- **Productie:** `https://wijn-overzicht.vercel.app`
+- **Vercel limiet:** max 12 functies in `api/`; gedeelde code in `lib/` via `vercel.json` → `includeFiles: "lib/**"`
+- **Taal:** communiceer altijd in het Nederlands met de gebruiker
+
+---
+
+## Authenticatie
+
+- Gebruikers: emailadres als username, rollen `admin` / `readonly`
+- Wachtwoorden: PBKDF2-SHA256 (Python stdlib, 100.000 iteraties)
+- Sessies: HMAC-SHA256 tokens in HttpOnly Secure cookie `wijn_auth` (30 dagen)
+- 2FA: TOTP RFC 6238, puur Python stdlib — geen externe library
+- Alle auth-logica in `lib/auth.py` en `api/auth.py`
+- Wachtwoord reset via Python-script rechtstreeks op de database (geen UI nodig)
+
+---
 
 ## Lokale dev-server
 
 ```bash
-cd /Users/ronaldvanrooijen/wijn-vercel
-python3 dev_server.py
+python3 dev_server.py   # poort 3000
 ```
 
-Draait op `http://localhost:3000`. Leest `.env` automatisch in.
-Vereist: `DATABASE_URL` en `ANTHROPIC_API_KEY` in `.env`.
+`vercel dev` werkt niet voor Python functies. `dev_server.py` bootst de Vercel-routing na via Python class-swap en laadt `.env` automatisch in.
+
+Vereist in `.env`: `DATABASE_URL`, `ANTHROPIC_API_KEY`
+
+---
+
+## Gebruikerspaneel
+
+- Toegankelijk voor **alle** gebruikers (ook readonly) via header-knop
+- Admins zien extra: gebruikerslijst, gebruiker toevoegen/verwijderen
+- Alle gebruikers: wachtwoord wijzigen, 2FA instellen/uitschakelen
