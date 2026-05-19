@@ -1,4 +1,4 @@
-import sys, os, json
+import sys, os, json, traceback
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.helpers import BaseHandler
 from lib.auth import (
@@ -20,19 +20,28 @@ def _valid_username(s: str) -> bool:
     return bool(s) and len(s) <= 100 and all(c.isalnum() or c in "-_.@+" for c in s)
 
 
-def _ok_response(handler, username: str, role: str):
-    """Stuur auth-cookie + JSON terug na succesvolle login."""
+def _send_authed(handler, username: str, role: str):
+    """Stuur 200-response met auth-cookie, gebruik dezelfde headers-flow als json_response."""
     token = make_token(username, role)
+    body = json.dumps({"ok": True, "username": username, "role": role}, ensure_ascii=False).encode("utf-8")
     handler.send_response(200)
-    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Access-Control-Allow-Origin", "*")
     set_auth_cookie(handler, token)
     handler.end_headers()
-    handler.wfile.write(json.dumps({"ok": True, "username": username, "role": role}).encode())
+    handler.wfile.write(body)
 
 
 class handler(BaseHandler):
 
     def do_GET(self):
+        try:
+            self._do_GET()
+        except Exception:
+            self.json_response(500, {"message": "Serverfout: " + traceback.format_exc()})
+
+    def _do_GET(self):
         parsed = urlparse(self.path)
         action = parse_qs(parsed.query).get("action", [""])[0]
 
@@ -49,7 +58,6 @@ class handler(BaseHandler):
             self.json_response(200, {"users": list_users()})
             return
 
-        # Default: check inlog-status
         token = get_token_from_request(self)
         if token:
             result = verify_token(token)
@@ -60,16 +68,25 @@ class handler(BaseHandler):
         self.json_response(401, {"message": "Niet ingelogd."})
 
     def do_POST(self):
+        try:
+            self._do_POST()
+        except Exception:
+            self.json_response(500, {"message": "Serverfout: " + traceback.format_exc()})
+
+    def _do_POST(self):
         parsed = urlparse(self.path)
         action = parse_qs(parsed.query).get("action", ["login"])[0]
 
         # ── Uitloggen ──────────────────────────────────────────────────────────
         if action == "logout":
+            body = b'{"ok":true}'
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
             clear_auth_cookie(self)
             self.end_headers()
-            self.wfile.write(b'{"ok":true}')
+            self.wfile.write(body)
             return
 
         # ── Eerste admin aanmaken ──────────────────────────────────────────────
@@ -91,8 +108,9 @@ class handler(BaseHandler):
             if len(password) < 8:
                 self.json_response(400, {"message": "Wachtwoord te kort (minimaal 8 tekens)."})
                 return
-            create_user(username, hash_password(password), "admin")
-            _ok_response(self, username, "admin")
+            pw_hash = hash_password(password)
+            create_user(username, pw_hash, "admin")
+            _send_authed(self, username, "admin")
             return
 
         # ── 2FA verificatie na wachtwoord-check ───────────────────────────────
@@ -114,7 +132,7 @@ class handler(BaseHandler):
                 self.json_response(401, {"message": "Onjuiste verificatiecode."})
                 return
             user = get_user(username)
-            _ok_response(self, username, user["role"])
+            _send_authed(self, username, user["role"])
             return
 
         # ── 2FA instellen: genereer geheim ────────────────────────────────────
@@ -244,16 +262,21 @@ class handler(BaseHandler):
             self.json_response(401, {"message": "Onjuist e-mailadres of wachtwoord."})
             return
 
-        # Controleer of 2FA ingeschakeld is
         secret = get_totp_secret(username)
         if secret:
             challenge = make_challenge_token(username)
             self.json_response(200, {"require2fa": True, "challengeToken": challenge})
             return
 
-        _ok_response(self, username, user["role"])
+        _send_authed(self, username, user["role"])
 
     def do_DELETE(self):
+        try:
+            self._do_DELETE()
+        except Exception:
+            self.json_response(500, {"message": "Serverfout: " + traceback.format_exc()})
+
+    def _do_DELETE(self):
         auth = require_admin(self)
         if not auth:
             return
