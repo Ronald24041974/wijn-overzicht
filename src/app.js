@@ -2156,7 +2156,13 @@ function _loginLogoTop() {
 }
 
 function showLoginScreen(errorMsg = '', setupMode = false) {
-  document.getElementById('root').innerHTML = `
+  const root = document.getElementById('root');
+  const existingForm = root.querySelector('#login-form');
+  if (existingForm && !errorMsg && !setupMode) {
+    _bindLoginForm(setupMode);
+    return;
+  }
+  root.innerHTML = `
     <div class="login-wrap">
       ${_loginLogoTop()}
       <div class="login-card">
@@ -2189,7 +2195,10 @@ function showLoginScreen(errorMsg = '', setupMode = false) {
       </div>
     </div>
   `;
+  _bindLoginForm(setupMode);
+}
 
+function _bindLoginForm(setupMode) {
   document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const username = document.getElementById('login-user').value.trim();
@@ -2210,6 +2219,7 @@ function showLoginScreen(errorMsg = '', setupMode = false) {
     }
     if (r.ok) {
       currentUser = { username: data.username || username, role: data.role || 'admin', totpEnabled: data.totpEnabled || false };
+      localStorage.setItem('wijn_session', '1');
       render(); loadWines();
     } else {
       showLoginScreen(data.message || 'Inloggen mislukt.', setupMode);
@@ -2257,6 +2267,7 @@ function showTwoFactorScreen(challengeToken, errorMsg = '') {
     const data = await r.json().catch(() => ({}));
     if (r.ok) {
       currentUser = { username: data.username || '', role: data.role || 'readonly', totpEnabled: data.totpEnabled || false };
+      localStorage.setItem('wijn_session', '1');
       render(); loadWines();
     } else {
       showTwoFactorScreen(challengeToken, data.message || 'Onjuiste code.');
@@ -2267,16 +2278,25 @@ function showTwoFactorScreen(challengeToken, errorMsg = '') {
 async function logout() {
   await fetch('/api/auth?action=logout', { method: 'POST' });
   currentUser = { username: '', role: 'admin' };
+  localStorage.removeItem('wijn_session');
   showLoginScreen();
 }
 
 (async () => {
+  if (!localStorage.getItem('wijn_session')) {
+    showLoginScreen();
+    fetch('/api/auth?action=status').then(x => x.json()).catch(() => ({ hasUsers: true })).then(status => {
+      if (!status.hasUsers) showLoginScreen('', true);
+    });
+    return;
+  }
   try {
     const r = await fetch('/api/auth');
     if (r.ok) {
       const data = await r.json().catch(() => ({}));
       currentUser = { username: data.username || '', role: data.role || 'readonly', totpEnabled: data.totpEnabled || false };
     } else {
+      localStorage.removeItem('wijn_session');
       const status = await fetch('/api/auth?action=status').then(x => x.json()).catch(() => ({ hasUsers: true }));
       showLoginScreen('', !status.hasUsers);
       return;

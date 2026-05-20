@@ -14,12 +14,40 @@
   </head>
   <body>
     <div id="root">
-      <main class="loading">
-        <h1>Wijn Overzicht</h1>
-        <p>Het wijnoverzicht wordt geladen.</p>
-      </main>
+      <div class="login-wrap">
+        <div class="login-logo-top">
+          <svg width="40" height="40" viewBox="0 0 32 32" fill="none">
+            <path d="M15 22 C11 21.5 4 17 4 12 C4 7 8.5 3 9 2 L23 2 C23.5 3 28 7 28 12 C28 17 21 21.5 17 22 Z" fill="#213f39"/>
+            <path d="M5.5 16.5 C4.5 19 11 22 15 22 L17 22 C21 22 27.5 19 26.5 16.5 Z" fill="#8b1f35"/>
+            <line x1="16" y1="22" x2="16" y2="28" stroke="#213f39" stroke-width="2" stroke-linecap="round"/>
+            <path d="M10 28.5 Q16 27 22 28.5" stroke="#213f39" stroke-width="2" stroke-linecap="round" fill="none"/>
+          </svg>
+          <span class="login-brand-name">Wijnoverzicht</span>
+        </div>
+        <div class="login-card">
+          <h1 class="login-heading">Inloggen</h1>
+          <form id="login-form" autocomplete="on">
+            <div class="lf-group">
+              <label class="lf-label" for="login-user">E-mailadres</label>
+              <input type="email" id="login-user" class="lf-input" autocomplete="username email" autofocus inputmode="email" />
+            </div>
+            <div class="lf-group">
+              <div class="lf-label-row">
+                <label class="lf-label" for="login-pw">Wachtwoord</label>
+                <a href="#" class="lf-forgot" onclick="event.preventDefault();document.getElementById('forgot-info').style.display='block'">Wachtwoord vergeten?</a>
+              </div>
+              <input type="password" id="login-pw" class="lf-input" autocomplete="current-password" />
+            </div>
+            <button type="submit" class="lf-btn" id="login-submit">Inloggen</button>
+          </form>
+          <div id="forgot-info" class="lf-info-box" style="display:none">
+            <strong>Wachtwoord vergeten?</strong><br>
+            Vraag een beheerder om je wachtwoord te resetten via het gebruikersbeheer.
+            Ben jij de beheerder? Neem dan contact op of herstel het wachtwoord via de Neon-database.
+          </div>
+        </div>
+      </div>
     </div>
-    <script src="./src/wines.js"></script>
     <script defer src="./src/app.js"></script>
   </body>
 </html>
