@@ -108,8 +108,6 @@ async function loadWines() {
 
 async function saveWine(patch) {
   try {
-    statusMsg = 'Opslaan…';
-    render();
     const r = await fetch('/api/wines', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -248,9 +246,18 @@ function render() {
   if (selected && selected.id !== selectedId) selectedId = selected.id;
   const summary  = totals(wines);
 
+  const prevBottleImg = root.querySelector('.bottle-img');
+
   root.innerHTML = isMobile()
     ? renderMobile(visible, selected, summary)
     : renderDesktop(visible, selected, summary);
+
+  if (prevBottleImg) {
+    const nextBottleImg = root.querySelector('.bottle-img');
+    if (nextBottleImg && nextBottleImg.getAttribute('src') === prevBottleImg.getAttribute('src')) {
+      nextBottleImg.replaceWith(prevBottleImg);
+    }
+  }
 
   if (zoomedWineId) {
     const wine = wines.find(w => w.id === zoomedWineId);
@@ -1929,7 +1936,13 @@ function bindEvents() {
   document.querySelectorAll('[data-step]').forEach(btn => {
     btn.addEventListener('click', () => {
       const w = getSelected();
-      saveWine({ rowNumber: w.rowNumber, quantity: Math.max(0, w.quantityNow + Number(btn.dataset.step)) });
+      const newQty = Math.max(0, w.quantityNow + Number(btn.dataset.step));
+      wines = wines.map(wine => wine.rowNumber === w.rowNumber
+        ? { ...wine, quantity: newQty, quantityNow: newQty }
+        : wine
+      );
+      render();
+      saveWine({ rowNumber: w.rowNumber, quantity: newQty });
     });
   });
 
@@ -1972,12 +1985,18 @@ function bindEvents() {
 
   document.querySelectorAll('[data-scan-action]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const wine  = wines.find(w => w.id === (scanState.wineId || selectedId)) || getSelected();
-      const delta = btn.dataset.scanAction === 'add' ? 1 : -1;
+      const wine   = wines.find(w => w.id === (scanState.wineId || selectedId)) || getSelected();
+      const delta  = btn.dataset.scanAction === 'add' ? 1 : -1;
+      const newQty = Math.max(0, wine.quantityNow + delta);
       scanState.wineId = wine.id;
       selectedId       = wine.id;
       scanState.note   = delta > 0 ? 'Voorraad verhoogd (+1).' : 'Voorraad verlaagd (−1).';
-      saveWine({ rowNumber: wine.rowNumber, quantity: Math.max(0, wine.quantityNow + delta) });
+      wines = wines.map(w => w.rowNumber === wine.rowNumber
+        ? { ...w, quantity: newQty, quantityNow: newQty }
+        : w
+      );
+      render();
+      saveWine({ rowNumber: wine.rowNumber, quantity: newQty });
     });
   });
 

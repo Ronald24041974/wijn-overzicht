@@ -155,6 +155,8 @@ h1, h2, h3, p { margin: 0; }
   place-items: center;
   flex-shrink: 0;
   transition: opacity .12s;
+  touch-action: manipulation;
+  cursor: pointer;
 }
 .step-button:hover { opacity: .8; }
 

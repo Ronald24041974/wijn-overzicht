@@ -275,7 +275,8 @@ def update_wine(data: dict) -> dict:
     qty = qty or 0
     pp  = number_or_none(data.get("purchasePrice")) if "purchasePrice" in data else ex.get("purchaseprice")
     cp  = number_or_none(data.get("currentPrice"))  if "currentPrice"  in data else ex.get("currentprice")
-    now = int(time.time())
+    quantity_only = set(data.keys()) <= {"rowNumber", "quantity"}
+    now = ex.get("updatedat") if quantity_only else int(time.time())
 
     with get_db() as conn:
         with conn.cursor() as cur:
