@@ -129,17 +129,21 @@ def get_token_from_request(handler) -> str | None:
     return None
 
 
+def _cookie_flags() -> str:
+    secure = "" if os.environ.get("DEV_MODE") else " Secure;"
+    return f"HttpOnly;{secure} SameSite=Strict"
+
 def set_auth_cookie(handler, token: str):
     handler.send_header(
         "Set-Cookie",
-        f"wijn_auth={token}; HttpOnly; Secure; SameSite=Strict; Max-Age={COOKIE_MAX_AGE}; Path=/"
+        f"wijn_auth={token}; {_cookie_flags()}; Max-Age={COOKIE_MAX_AGE}; Path=/"
     )
 
 
 def clear_auth_cookie(handler):
     handler.send_header(
         "Set-Cookie",
-        "wijn_auth=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/"
+        f"wijn_auth=; {_cookie_flags()}; Max-Age=0; Path=/"
     )
 
 

@@ -21,6 +21,7 @@ def _load_env():
                     os.environ.setdefault(k.strip(), v.strip())
 
 _load_env()
+os.environ['DEV_MODE'] = '1'
 
 REWRITES = [
     (r'^/api/wine-thumb$',       '/api/wine_thumb'),
@@ -111,7 +112,7 @@ class DevHandler(SimpleHTTPRequestHandler):
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 3000
     os.chdir(BASE_DIR)
-    server = HTTPServer(('localhost', port), DevHandler)
+    server = HTTPServer(('0.0.0.0', port), DevHandler)
     print(f'Dev-server → http://localhost:{port}')
     print('Ctrl+C om te stoppen.\n')
     try:
