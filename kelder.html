@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Wijnkelder</title>
+<meta name="theme-color" content="#1f3c36" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Wijnkelder" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<style>
+  :root {
+    --bg: #f4f2ee;
+    --surface: #ffffff;
+    --ink: #1a1b18;
+    --muted: #6f746e;
+    --faint: #a9aca5;
+    --sep: rgba(60,60,67,0.10);
+    --fill: #eceae4;
+    --brand: #1f3c36;
+    --brand-pale: #e3ece7;
+    --gold: #b8893a;
+    --red: #b0394a;
+    --amber-bg: #fbeedb;
+    --amber-ink: #8a5a16;
+    --shadow: 0 1px 1px rgba(20,20,18,.025), 0 3px 10px rgba(20,20,18,.035);
+    --hair: inset 0 0 0 0.5px rgba(60,60,67,0.07);
+    --c-dash: rgba(60,60,67,0.22);
+  }
+  * { box-sizing: border-box; }
+  html, body, #root { height: 100%; margin: 0; }
+  body {
+    background: #e9e7e2;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: var(--ink);
+  }
+  /* running app column — full viewport on phone, centered column on desktop */
+  .app-shell {
+    position: relative; height: 100%; width: 100%; max-width: 440px;
+    margin: 0 auto; background: var(--bg); overflow: hidden;
+    box-shadow: 0 0 50px rgba(0,0,0,0.07);
+  }
+  .login-stage {
+    height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: radial-gradient(120% 90% at 50% 0%, #efedea 0%, #e3e1da 70%);
+  }
+
+  /* hide scrollbars inside the app */
+  .scroll, .chiprow { -ms-overflow-style: none; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar, .chiprow::-webkit-scrollbar { display: none; }
+
+  /* tap feedback */
+  .tap { transition: transform .12s ease, opacity .12s ease; -webkit-tap-highlight-color: transparent; }
+  .tap:active { transform: scale(.97); opacity: .9; }
+
+  /* wine card */
+  .wine-card {
+    display: flex; align-items: center; gap: 14px; width: 100%;
+    background: var(--surface); border: none; border-radius: 16px;
+    padding: 11px 13px; cursor: pointer; box-shadow: var(--shadow), var(--hair);
+    font-family: inherit;
+  }
+  .wine-card .wine-thumb {
+    width: 44px; height: 60px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #f6f4ef; border-radius: 11px; overflow: hidden;
+  }
+  input::placeholder, textarea::placeholder { color: var(--faint); }
+  .add-group { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow), var(--hair); overflow: hidden; }
+  .add-spin { animation: add-spin 0.8s linear infinite; }
+  @keyframes add-spin { to { transform: rotate(360deg); } }
+  @keyframes donut-in { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: none; } }
+  .donut-in { animation: donut-in .7s cubic-bezier(.32,.72,0,1) both; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <!-- ───────────────────────── data + API laag ───────────────────────── -->
+  <script type="text/babel">
+// Wijntype-tokens (kleuren per soort)
+const TYPE = {
+  Rood:        { dot: '#8b2435', soft: '#f6ebed', glass: '#3a1620', glassHi: '#6e2a38' },
+  Wit:         { dot: '#b08a1f', soft: '#f7f1e2', glass: '#3a3d1c', glassHi: '#6d7032' },
+  'Rosé':      { dot: '#c0697a', soft: '#f9edef', glass: '#5a2d36', glassHi: '#92505d' },
+  Mousserend:  { dot: '#5a6b66', soft: '#eef2f0', glass: '#22302a', glassHi: '#46584f' },
+  Dessert:     { dot: '#9a6b2e', soft: '#f6efe3', glass: '#422c14', glassHi: '#73502a' },
+};
+
+// Statische leverancier-suggesties (getoond bij lege voorraad — nog niet gekoppeld aan een API)
+const SUPPLIERS = [
+  { naam: 'Wereldwijnen.nl', platform: 'Trustpilot', score: 4.6, prijs: 21.95, verzend: 0, gratisVanaf: 75, best: true, notitie: 'Op voorraad — morgen in huis.' },
+  { naam: 'Vivino Market', platform: 'Vivino', score: 4.4, prijs: 23.50, verzend: 5.95, gratisVanaf: 150, best: false, notitie: 'Internationale verzending.' },
+  { naam: 'Gall & Gall', platform: 'Google', score: 4.2, prijs: 24.99, verzend: 4.95, gratisVanaf: 50, best: false, notitie: 'Ophalen in winkel mogelijk.' },
+];
+
+const fmtEur = (n) => '€' + Number(n || 0).toLocaleString('nl-NL', { minimumFractionDigits: (n % 1) ? 2 : 0, maximumFractionDigits: 2 });
+
+// Wordt na het laden gevuld met echte wijnen uit de database
+window.WINES = [];
+
+// ── DB-record → vorm die de schermen verwachten ─────────────────────────────
+function adaptWine(r) {
+  return {
+    id: 'wine-' + r.rowNumber,
+    rowNumber: r.rowNumber,
+    naam: r.name || '',
+    soort: (r.type && TYPE[r.type]) ? r.type : (r.type || 'Rood'),
+    druif: r.grape || '',
+    land: r.country || '',
+    regio: r.region || '',
+    jaar: r.year || '',
+    aantal: r.quantity || 0,
+    vivino: (r.vivino != null) ? Number(r.vivino) : 0,
+    js: (r.suckling != null) ? r.suckling : null,
+    mijn: (r.score != null) ? r.score : 0,
+    prijs: (r.currentPrice != null) ? Number(r.currentPrice) : 0,
+    inkoop: (r.purchasePrice != null) ? Number(r.purchasePrice) : 0,
+    kast: r.cabinet || 'Niet ingedeeld',
+    notitie: r.note || '',
+    leverancier: {
+      naam: r.supplierName || '', contact: r.supplierContact || '',
+      tel: r.supplierPhone || '', email: r.supplierEmail || '', adres: r.supplierAddress || '',
+    },
+  };
+}
+
+// ── fetch-wrapper (same-origin → cookie gaat automatisch mee) ────────────────
+async function fetchJSON(url, opts) {
+  const o = Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts || {});
+  const res = await fetch(url, o);
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* geen json-body */ }
+  return { ok: res.ok, status: res.status, data: data || {} };
+}
+
+async function loadWines() {
+  const r = await fetchJSON('/api/wines');
+  if (!r.ok) { const e = new Error(r.data.message || 'Laden mislukt'); e.status = r.status; throw e; }
+  window.WINES = (r.data.wines || []).map(adaptWine);
+  return window.WINES;
+}
+
+function applyWinesResponse(data) {
+  if (data && data.wines) window.WINES = data.wines.map(adaptWine);
+  return window.WINES;
+}
+
+async function patchWine(payload) {
+  const r = await fetchJSON('/api/wines', { method: 'PATCH', body: JSON.stringify(payload) });
+  if (!r.ok) throw new Error(r.data.message || 'Opslaan mislukt');
+  return applyWinesResponse(r.data);
+}
+async function addWineApi(payload) {
+  const r = await fetchJSON('/api/wines', { method: 'POST', body: JSON.stringify(payload) });
+  if (!r.ok) throw new Error(r.data.message || 'Toevoegen mislukt');
+  return applyWinesResponse(r.data);
+}
+async function deleteWineApi(rowNumber) {
+  const r = await fetchJSON('/api/wines?rowNumber=' + encodeURIComponent(rowNumber), { method: 'DELETE' });
+  if (!r.ok) throw new Error(r.data.message || 'Verwijderen mislukt');
+  return applyWinesResponse(r.data);
+}
+
+window.IS_ADMIN = false;
+Object.assign(window, { TYPE, SUPPLIERS, fmtEur, adaptWine, loadWines, patchWine, addWineApi, deleteWineApi, fetchJSON });
+  </script>
+
+  <!-- ───────────────────────── icons ───────────────────────── -->
+  <script type="text/babel">
+const Icon = ({ d, size = 20, sw = 1.7, fill = 'none', vb = 24, children, style }) => (
+  <svg width={size} height={size} viewBox={`0 0 ${vb} ${vb}`} fill={fill}
+    stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
+    style={style}>
+    {d ? <path d={d} /> : children}
+  </svg>
+);
+
+const IcSearch  = (p) => <Icon {...p} children={<><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.2-3.2"/></>} />;
+const IcPlus    = (p) => <Icon {...p} d="M12 5v14M5 12h14" sw={2} />;
+const IcMinus   = (p) => <Icon {...p} d="M5 12h14" sw={2} />;
+const IcChevL   = (p) => <Icon {...p} d="M15 5l-7 7 7 7" sw={2} />;
+const IcChevR   = (p) => <Icon {...p} d="M9 5l7 7-7 7" />;
+const IcChevDown= (p) => <Icon {...p} d="M5 9l7 7 7-7" />;
+const IcStar    = (p) => <Icon {...p} fill="currentColor" sw={0} children={<path d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.1 6.47L12 17.4l-5.8 3.05 1.1-6.47L2.6 9.35l6.5-.95L12 2.5z"/>} />;
+const IcZoom    = (p) => <Icon {...p} children={<><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.2-3.2M11 8v6M8 11h6"/></>} />;
+const IcMore    = (p) => <Icon {...p} sw={0} fill="currentColor" children={<><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></>} />;
+const IcCart    = (p) => <Icon {...p} children={<><path d="M3 4h2l2.2 11.2a1 1 0 001 .8h8.5a1 1 0 001-.8L20 7H6"/><circle cx="9" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></>} />;
+const IcX       = (p) => <Icon {...p} d="M6 6l12 12M18 6L6 18" sw={2} />;
+const IcTrash   = (p) => <Icon {...p} children={<><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></>} />;
+const IcPencil  = (p) => <Icon {...p} d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" />;
+const IcArrowR  = (p) => <Icon {...p} d="M5 12h14M13 6l6 6-6 6" />;
+const IcLogout  = (p) => <Icon {...p} children={<><path d="M14 4h4a1 1 0 011 1v14a1 1 0 01-1 1h-4"/><path d="M10 8l-4 4 4 4M6 12h9"/></>} />;
+const IcGrape   = (p) => (
+  <svg width={p.size || 20} height={p.size || 20} viewBox="0 0 24 24" fill="currentColor" style={p.style}>
+    <path d="M12 7V4.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    <path d="M12.2 4.4c1.4-1 3-.7 3.6.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" opacity="0.85" />
+    <circle cx="8.3" cy="9.2" r="2.15" /><circle cx="12" cy="8.8" r="2.15" /><circle cx="15.7" cy="9.2" r="2.15" />
+    <circle cx="10.1" cy="13" r="2.15" /><circle cx="13.9" cy="13" r="2.15" />
+    <circle cx="12" cy="16.8" r="2.15" />
+  </svg>
+);
+
+const TabList   = (p) => <Icon {...p} children={<><path d="M4 7h16M4 12h16M4 17h10"/></>} />;
+const TabCellar = (p) => <Icon {...p} children={<><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M12 4v16"/></>} />;
+const TabChart  = (p) => <Icon {...p} children={<><path d="M5 20V11M12 20V5M19 20v-6"/></>} />;
+const TabUser   = (p) => <Icon {...p} children={<><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/></>} />;
+
+Object.assign(window, {
+  IcSearch, IcPlus, IcMinus, IcChevL, IcChevR, IcChevDown, IcStar, IcZoom, IcMore,
+  IcCart, IcX, IcTrash, IcPencil, IcArrowR, IcLogout, IcGrape,
+  TabList, TabCellar, TabChart, TabUser,
+});
+  </script>
+
+  <!-- ───────────────────────── bottle (placeholder/fallback) ───────────────────────── -->
+  <script type="text/babel">
+function Bottle({ soort = 'Rood', h = 64, year, shelf = false, label = false }) {
+  const t = (window.TYPE && window.TYPE[soort]) || window.TYPE.Rood;
+  const neckW = h * 0.165, neckH = h * 0.20;
+  const bodyW = h * 0.40, bodyH = h * 0.70;
+  const capH = h * 0.045, capW = neckW * 1.35;
+  const radius = bodyW * 0.34;
+
+  const glass = `linear-gradient(100deg, ${t.glassHi} 0%, ${t.glass} 32%, ${t.glass} 70%, ${t.glassHi} 100%)`;
+
+  return (
+    <div style={{
+      width: bodyW + 6, height: h, position: 'relative',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      filter: `drop-shadow(0 ${h * 0.035}px ${h * 0.055}px rgba(40,20,25,0.15))`,
+    }}>
+      <div style={{ width: capW, height: capH, background: t.glass, borderRadius: `${capH}px ${capH}px 2px 2px`, opacity: 0.92 }} />
+      <div style={{ width: neckW, height: neckH, background: glass, marginTop: -1 }} />
+      <div style={{
+        width: bodyW, height: bodyH, marginTop: -h * 0.02, background: glass,
+        borderRadius: `${radius * 1.3}px ${radius * 1.3}px ${radius}px ${radius}px`,
+        position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{ position: 'absolute', top: '6%', left: '20%', width: '14%', height: '78%', borderRadius: '40%', background: 'rgba(255,255,255,0.22)' }} />
+        {label && (
+          <div style={{
+            position: 'absolute', left: '50%', top: '46%', transform: 'translateX(-50%)',
+            width: bodyW * 0.78, height: bodyH * 0.40, background: '#f3ede1',
+            borderRadius: 3, boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.08)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: bodyH * 0.05,
+          }}>
+            <div style={{ width: '46%', height: 1.5, background: t.dot, opacity: 0.7, borderRadius: 2 }} />
+            <div style={{ width: '66%', height: 1.5, background: 'rgba(0,0,0,0.22)', borderRadius: 2 }} />
+            {year && <div style={{ fontSize: Math.max(6, bodyH * 0.085), color: 'rgba(0,0,0,0.5)', fontWeight: 600, letterSpacing: 0.5 }}>{year}</div>}
+          </div>
+        )}
+      </div>
+      {shelf && (
+        <div style={{
+          position: 'absolute', bottom: -h * 0.055, left: '50%', transform: 'translateX(-50%)',
+          width: bodyW * 1.5, height: h * 0.06, borderRadius: '50%',
+          background: 'radial-gradient(closest-side, rgba(40,20,25,0.28), rgba(40,20,25,0))',
+        }} />
+      )}
+    </div>
+  );
+}
+
+window.Bottle = Bottle;
+  </script>
+
+  <!-- ───────────────────────── gedeelde componenten ───────────────────────── -->
+  <script type="text/babel">
+const { useState } = React;
+
+// Echte flesfoto uit de DB met terugval op de gestileerde placeholder-fles.
+function WineThumb({ w, h = 64, label = false, shelf = false, big = false, year }) {
+  const [failed, setFailed] = useState(false);
+  const id = w && w.rowNumber;
+  if (!id || failed) {
+    return <window.Bottle soort={w ? w.soort : 'Rood'} h={h} year={year} shelf={shelf} label={label} />;
+  }
+  const src = (big ? '/api/wine-image?id=' : '/api/wine-thumb?id=') + encodeURIComponent(id);
+  return (
+    <img src={src} alt={(w && w.naam) || ''} onError={() => setFailed(true)}
+      style={{ height: h, maxWidth: '100%', objectFit: 'contain',
+        filter: `drop-shadow(0 ${h * 0.035}px ${h * 0.06}px rgba(40,20,25,0.18))` }} />
+  );
+}
+
+function GlassBtn({ children, onClick, size = 38, dark = false, style = {} }) {
+  return (
+    <button onClick={onClick} className="tap glass-btn" style={{
+      width: size, height: size, borderRadius: 999, border: 'none', padding: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: dark ? '#fff' : 'var(--ink)', cursor: 'pointer',
+      background: dark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.7)',
+      backdropFilter: 'blur(14px) saturate(180%)', WebkitBackdropFilter: 'blur(14px) saturate(180%)',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08), inset 0 0 0 0.5px rgba(0,0,0,0.05)',
+      ...style,
+    }}>{children}</button>
+  );
+}
+
+function TypeTag({ soort, size = 13 }) {
+  const t = window.TYPE[soort] || window.TYPE.Rood;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: size, color: 'var(--muted)', fontWeight: 450 }}>
+      <window.IcGrape size={size + 3} style={{ color: t.dot, flexShrink: 0 }} />
+      {soort}
+    </span>
+  );
+}
+
+function StockBadge({ n }) {
+  const out = n === 0;
+  return (
+    <span style={{
+      fontSize: 13.5, fontWeight: 600, minWidth: 24, textAlign: 'center',
+      padding: '3px 9px', borderRadius: 999, lineHeight: 1.2,
+      color: out ? '#fff' : 'var(--brand)',
+      background: out ? 'var(--red)' : 'var(--brand-pale)',
+    }}>{out ? 'Op' : n}</span>
+  );
+}
+
+function WineCard({ w, onClick }) {
+  return (
+    <button onClick={onClick} className="tap wine-card">
+      <div className="wine-thumb">
+        <window.WineThumb w={w} h={52} label />
+      </div>
+      <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+        <div style={{ fontSize: 16, fontWeight: 590, color: 'var(--ink)', letterSpacing: -0.24, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {w.naam}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {[w.land, w.jaar, window.fmtEur(w.prijs)].filter(Boolean).join(' · ')}
+        </div>
+        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <TypeTag soort={w.soort} size={12} />
+          <span style={{ width: 3, height: 3, borderRadius: 999, background: 'var(--faint)', flexShrink: 0 }} />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--muted)', fontWeight: 450, whiteSpace: 'nowrap' }}>
+            <window.TabCellar size={12} style={{ color: 'var(--faint)', flexShrink: 0 }} />
+            {w.kast === 'Niet ingedeeld' ? 'Niet ingedeeld' : w.kast.replace('Wijnkast', 'Kast')}
+          </span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <StockBadge n={w.aantal} />
+        <window.IcChevR size={15} style={{ color: 'var(--faint)' }} />
+      </div>
+    </button>
+  );
+}
+
+// Inklapbare detail-sectie (label + rijen)
+function GroupSection({ title, rows, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ marginTop: 22 }}>
+      <button onClick={() => setOpen(o => !o)} className="tap" style={{
+        width: '100%', background: 'none', border: 'none', padding: '0 6px 8px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer',
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)' }}>{title}</span>
+        <window.IcChevDown size={15} style={{ color: 'var(--faint)', transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .2s' }} />
+      </button>
+      {open && (
+        <div style={{ background: 'var(--surface)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow), var(--hair)' }}>
+          {rows.map((r, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', minHeight: 46, padding: '10px 16px', gap: 12, borderTop: i ? '0.5px solid var(--sep)' : 'none' }}>
+              <span style={{ fontSize: 15, color: 'var(--muted)', flexShrink: 0, fontWeight: 400 }}>{r[0]}</span>
+              <span style={{ flex: 1, textAlign: 'right', fontSize: 15, fontWeight: 450, color: r[2] || 'var(--ink)', whiteSpace: r[3] ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: r[3] ? 1.45 : 1.3 }}>{r[1]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LabeledSection({ label, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ marginTop: 24 }}>
+      <button onClick={() => setOpen(o => !o)} className="tap" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: 'none', border: 'none', padding: '0 6px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>
+        <span style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)' }}>{label}</span>
+        <window.IcChevDown size={15} style={{ color: 'var(--faint)', transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .2s' }} />
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+Object.assign(window, { WineThumb, GlassBtn, TypeTag, StockBadge, WineCard, GroupSection, LabeledSection });
+  </script>
+
+  <!-- ───────────────────────── lijst / hoofdscherm + tabbar ───────────────────────── -->
+  <script type="text/babel">
+const { useState: useS } = React;
+
+function TabBar({ active = 'kelder', onTab }) {
+  const tabs = [
+    ['kelder', 'Kelder', window.TabList],
+    ['kasten', 'Kasten', window.TabCellar],
+    ['analyse', 'Analyse', window.TabChart],
+    ['account', 'Account', window.TabUser],
+  ];
+  return (
+    <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 30, paddingBottom: 22 }}>
+      <div style={{
+        margin: '0 14px', height: 58, borderRadius: 26, display: 'flex', alignItems: 'center',
+        padding: '0 6px', background: 'rgba(252,251,249,0.78)',
+        backdropFilter: 'blur(22px) saturate(180%)', WebkitBackdropFilter: 'blur(22px) saturate(180%)',
+        boxShadow: '0 6px 24px rgba(0,0,0,0.10), inset 0 0 0 0.5px rgba(0,0,0,0.06)',
+      }}>
+        {tabs.map(([id, label, I]) => {
+          const on = id === active;
+          return (
+            <div key={id} onClick={() => onTab && onTab(id)} className="tap" style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              color: on ? 'var(--brand)' : 'var(--faint)', cursor: 'pointer',
+            }}>
+              <I size={23} sw={on ? 2 : 1.7} />
+              <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 500, letterSpacing: 0.1 }}>{label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ListScreen({ onOpen, onAdd, onTab }) {
+  const [q, setQ] = useS('');
+  const [filter, setFilter] = useS('Alles');
+  const chips = ['Alles', 'Rood', 'Wit', 'Rosé', 'Mousserend'];
+
+  const wines = window.WINES.filter(w => {
+    const okType = filter === 'Alles' || w.soort === filter;
+    const s = q.trim().toLowerCase();
+    const okQ = !s || [w.naam, w.druif, w.land, w.regio].join(' ').toLowerCase().includes(s);
+    return okType && okQ;
+  });
+
+  const totaal = window.WINES.reduce((a, w) => a + w.aantal, 0);
+  const waarde = window.WINES.reduce((a, w) => a + w.aantal * w.prijs, 0);
+  const gem = totaal ? Math.round(waarde / totaal) : 0;
+
+  const stat = (label, val) => (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+      <span style={{ fontSize: 19, fontWeight: 640, color: 'var(--ink)', letterSpacing: -0.4 }}>{val}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 590, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--faint)' }}>{label}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ position: 'relative', height: '100%', background: 'var(--bg)' }}>
+      <div className="scroll" style={{ height: '100%', overflowY: 'auto', paddingBottom: 104 }}>
+        <div style={{ padding: '54px 18px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 40 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--faint)' }}>Persoonlijk archief</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <window.GlassBtn onClick={() => onTab('account')}><window.TabUser size={18} /></window.GlassBtn>
+              {window.IS_ADMIN && (
+                <window.GlassBtn style={{ background: 'var(--brand)', color: '#fff' }} onClick={onAdd}><window.IcPlus size={19} /></window.GlassBtn>
+              )}
+            </div>
+          </div>
+          <h1 style={{ margin: '7px 0 0', fontSize: 31, fontWeight: 680, letterSpacing: -0.8, color: 'var(--ink)' }}>Wijnoverzicht</h1>
+        </div>
+
+        <div style={{ padding: '16px 18px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 12px', borderRadius: 12, background: 'var(--fill)', color: 'var(--muted)' }}>
+            <window.IcSearch size={17} />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Naam, druif, regio…"
+              style={{ flex: 1, border: 'none', background: 'none', outline: 'none', fontSize: 15.5, color: 'var(--ink)', fontFamily: 'inherit' }} />
+          </div>
+        </div>
+
+        <div className="chiprow" style={{ display: 'flex', gap: 8, padding: '14px 18px 2px', overflowX: 'auto' }}>
+          {chips.map(c => {
+            const on = c === filter;
+            return (
+              <button key={c} onClick={() => setFilter(c)} className="tap" style={{
+                flexShrink: 0, padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                fontSize: 13.5, fontWeight: 590, fontFamily: 'inherit',
+                background: on ? 'var(--brand)' : 'var(--surface)',
+                color: on ? '#fff' : 'var(--muted)',
+                boxShadow: on ? 'none' : 'var(--hair)',
+              }}>{c}</button>
+            );
+          })}
+        </div>
+
+        <div style={{ padding: '16px 18px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', background: 'var(--surface)', borderRadius: 16, padding: '15px 6px', boxShadow: 'var(--shadow), var(--hair)' }}>
+            {stat('Flessen', totaal)}
+            <div style={{ width: 0.5, alignSelf: 'stretch', background: 'var(--sep)' }} />
+            {stat('Waarde', window.fmtEur(waarde))}
+            <div style={{ width: 0.5, alignSelf: 'stretch', background: 'var(--sep)' }} />
+            {stat('Gem./fles', window.fmtEur(gem))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px 24px 8px' }}>
+          <span style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)' }}>Wijnen</span>
+          <span style={{ fontSize: 12.5, fontWeight: 590, color: 'var(--faint)' }}>{wines.length}</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 16px' }}>
+          {wines.map(w => <window.WineCard key={w.id} w={w} onClick={() => onOpen(w.id)} />)}
+          {wines.length === 0 && (
+            <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 15, padding: '40px 0' }}>Geen wijnen gevonden</div>
+          )}
+        </div>
+      </div>
+      <TabBar active="kelder" onTab={onTab} />
+    </div>
+  );
+}
+
+window.ListScreen = ListScreen;
+window.TabBar = TabBar;
+  </script>
+
+  <!-- ───────────────────────── wijn-detail ───────────────────────── -->
+  <script type="text/babel">
+const { useState: useSt } = React;
+
+function StockCard({ w }) {
+  const admin = window.IS_ADMIN;
+  const [n, setN] = useSt(w.aantal);
+  const [showSup, setShowSup] = useSt(false);
+  const timer = React.useRef(null);
+  const out = n === 0;
+
+  const commit = (val) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      window.patchWine({ rowNumber: w.rowNumber, quantity: val })
+        .then(() => { w.aantal = val; if (window.__refresh) window.__refresh(); })
+        .catch((e) => { setN(w.aantal); alert(e.message); });
+    }, 600);
+  };
+  const change = (val) => { const v = Math.max(0, val); setN(v); commit(v); };
+
+  const stepBtn = (icon, on, primary) => (
+    <button onClick={on} className="tap" style={{
+      width: 36, height: 36, borderRadius: 999, border: 'none', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: primary ? 'var(--brand)' : 'var(--fill)',
+      color: primary ? '#fff' : 'var(--muted)',
+    }}>{icon}</button>
+  );
+
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 18, boxShadow: 'var(--shadow), var(--hair)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)' }}>Voorraad</span>
+          {admin ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {stepBtn(<window.IcMinus size={17} />, () => change(n - 1))}
+              <span style={{ fontSize: 27, fontWeight: 680, color: out ? 'var(--red)' : 'var(--ink)', minWidth: 28, textAlign: 'center', letterSpacing: -1 }}>{n}</span>
+              {stepBtn(<window.IcPlus size={17} />, () => change(n + 1), true)}
+            </div>
+          ) : (
+            <span style={{ fontSize: 27, fontWeight: 680, color: out ? 'var(--red)' : 'var(--ink)', minWidth: 28, textAlign: 'center', letterSpacing: -1 }}>{out ? 'Op' : n}</span>
+          )}
+        </div>
+
+        {!out && (
+          <div style={{ display: 'flex', marginTop: 16, paddingTop: 16, borderTop: '0.5px solid var(--sep)' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>Totale waarde</div>
+              <div style={{ fontSize: 17, fontWeight: 640, color: 'var(--ink)', marginTop: 3, letterSpacing: -0.3 }}>{window.fmtEur(n * w.prijs)}</div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>Prijs per fles</div>
+              <div style={{ fontSize: 17, fontWeight: 640, color: 'var(--ink)', marginTop: 3, letterSpacing: -0.3 }}>{window.fmtEur(w.prijs)}</div>
+            </div>
+          </div>
+        )}
+
+        {out && (
+          <div style={{ marginTop: 16, padding: 14, borderRadius: 13, background: 'var(--amber-bg)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--amber-ink)' }}>Voorraad op</div>
+              <div style={{ fontSize: 12.5, color: 'var(--amber-ink)', opacity: 0.8, marginTop: 1 }}>Tijd om opnieuw te bestellen?</div>
+            </div>
+            <button onClick={() => setShowSup(s => !s)} className="tap" style={{
+              display: 'flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer',
+              padding: '9px 14px', borderRadius: 999, background: 'var(--brand)', color: '#fff',
+              fontSize: 13.5, fontWeight: 590, fontFamily: 'inherit',
+            }}><window.IcCart size={15} /> Bestel</button>
+          </div>
+        )}
+      </div>
+
+      {out && showSup && <SupplierList w={w} />}
+    </div>
+  );
+}
+
+function SupplierList({ w }) {
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)', padding: '0 6px 8px' }}>Leveranciers · 3 flessen</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {window.SUPPLIERS.map((s, i) => {
+          const totaal = s.prijs * 3 + (s.prijs * 3 >= s.gratisVanaf ? 0 : s.verzend);
+          return (
+            <div key={i} style={{ background: 'var(--surface)', borderRadius: 16, padding: 16, boxShadow: 'var(--shadow), var(--hair)', position: 'relative', border: s.best ? '1px solid var(--brand)' : 'none' }}>
+              {s.best && (
+                <span style={{ position: 'absolute', top: -9, left: 16, background: 'var(--brand)', color: '#fff', fontSize: 10.5, fontWeight: 640, padding: '3px 9px', borderRadius: 999, letterSpacing: 0.2 }}>Beste keuze</span>
+              )}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 15.5, fontWeight: 590, color: 'var(--ink)' }}>{s.naam}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3, fontSize: 12.5, color: 'var(--muted)' }}>
+                    <window.IcStar size={12} style={{ color: 'var(--gold)' }} /> {s.score.toFixed(1)} · {s.platform}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 17, fontWeight: 640, color: 'var(--ink)', letterSpacing: -0.3 }}>{window.fmtEur(totaal)}</div>
+                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>totaal · 3 fl</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTop: '0.5px solid var(--sep)' }}>
+                <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{window.fmtEur(s.prijs)}/fles · {s.verzend === 0 ? 'gratis verzending' : window.fmtEur(s.verzend) + ' verz.'}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 590, color: 'var(--brand)' }}>Webshop <window.IcArrowR size={13} /></span>
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ fontSize: 11.5, color: 'var(--faint)', textAlign: 'center', padding: '2px 20px', lineHeight: 1.45 }}>Geschatte prijzen — controleer de actuele prijs op de website.</div>
+      </div>
+    </div>
+  );
+}
+
+function DetailScreen({ w, onBack, onEdit, onDeleted }) {
+  const [zoom, setZoom] = useSt(false);
+  const [deleting, setDeleting] = useSt(false);
+  const t = window.TYPE[w.soort] || window.TYPE.Rood;
+  const admin = window.IS_ADMIN;
+
+  const handleDelete = () => {
+    if (deleting) return;
+    if (!window.confirm('Weet je zeker dat je "' + w.naam + '" wilt verwijderen?')) return;
+    setDeleting(true);
+    window.deleteWineApi(w.rowNumber)
+      .then(() => onDeleted && onDeleted())
+      .catch((e) => { setDeleting(false); alert(e.message); });
+  };
+
+  return (
+    <div style={{ position: 'relative', height: '100%', background: 'var(--bg)' }}>
+      <div className="scroll" style={{ height: '100%', overflowY: 'auto', paddingBottom: 36 }}>
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 20, padding: '50px 16px 10px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <window.GlassBtn onClick={onBack}><window.IcChevL size={20} /></window.GlassBtn>
+          {admin && (
+            <window.GlassBtn onClick={() => onEdit && onEdit(w)}><window.IcPencil size={18} /></window.GlassBtn>
+          )}
+        </div>
+
+        <div style={{ padding: '2px 22px 0' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--faint)' }}>{[w.druif, w.land].filter(Boolean).join(' · ')}</div>
+          <h1 style={{ margin: '7px 0 0', fontSize: 28, fontWeight: 680, letterSpacing: -0.6, color: 'var(--ink)', lineHeight: 1.12 }}>{w.naam}</h1>
+          <div style={{ marginTop: 5, fontSize: 15, color: 'var(--muted)', fontWeight: 450 }}>{[w.regio, w.jaar].filter(Boolean).join(' · ')}</div>
+        </div>
+
+        <div style={{ position: 'relative', margin: '16px 16px 0', height: 280, borderRadius: 22, overflow: 'hidden',
+          background: `radial-gradient(120% 80% at 50% 8%, ${t.soft} 0%, var(--surface) 70%)`, boxShadow: 'var(--shadow), var(--hair)' }}>
+          <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 2 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px 5px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(10px)', fontSize: 12.5, fontWeight: 590, color: 'var(--ink)' }}>
+              <window.IcGrape size={15} style={{ color: t.dot, flexShrink: 0 }} /> {w.soort}
+            </span>
+          </div>
+          <div style={{ position: 'absolute', top: 14, right: 14, zIndex: 3 }}>
+            <window.GlassBtn onClick={() => setZoom(true)}><window.IcZoom size={18} /></window.GlassBtn>
+          </div>
+          <div style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', zIndex: 2, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[
+              { label: 'Mijn', val: w.mijn, suffix: '/10' },
+              { label: 'Vivino', val: Number(w.vivino).toFixed(1), star: true },
+              { label: 'Suckling', val: w.js || '—', suffix: w.js ? '/100' : '', empty: !w.js },
+            ].map((r, i) => (
+              <div key={i} style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderRadius: 13, padding: '8px 10px', minWidth: 64, textAlign: 'center', boxShadow: '0 2px 8px rgba(30,20,15,0.07), inset 0 0 0 0.5px rgba(0,0,0,0.05)' }}>
+                <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--muted)' }}>{r.label}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, marginTop: 3 }}>
+                  {r.star && <window.IcStar size={11} style={{ color: 'var(--gold)' }} />}
+                  <span style={{ fontSize: 18, fontWeight: 680, color: r.empty ? 'var(--faint)' : 'var(--ink)', letterSpacing: -0.4 }}>{r.val}</span>
+                  {r.suffix && <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--faint)' }}>{r.suffix}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 14, paddingRight: 40 }}>
+            <window.WineThumb w={w} h={224} year={w.jaar} shelf label big />
+          </div>
+        </div>
+
+        <div style={{ padding: '0 22px' }}>
+          <StockCard w={w} />
+
+          <window.GroupSection title="Wijngegevens" rows={[
+            ['Soort', w.soort], ['Jaar', w.jaar || '—'], ['Druifsoort', w.druif || '—'],
+            ['Land', w.land || '—'], ['Regio', w.regio || '—'], ['Wijnkast', w.kast],
+          ]} />
+          <window.GroupSection title="Waardering & prijs" rows={[
+            ['Vivino', Number(w.vivino).toFixed(1)], ['James Suckling', w.js ? w.js + ' /100' : '—'],
+            ['Mijn score', (w.mijn || 0) + ' /10'], ['Inkoopprijs', window.fmtEur(w.inkoop)], ['Prijs per fles', window.fmtEur(w.prijs)],
+          ]} />
+          {w.notitie && (
+            <window.GroupSection title="Notitie" defaultOpen={true} rows={[['', w.notitie, 'var(--ink)', true]]} />
+          )}
+          <window.GroupSection title="Leverancier" defaultOpen={false} rows={[
+            ['Bedrijf', w.leverancier.naam || '—'], ['Contact', w.leverancier.contact || '—'],
+            ['Telefoon', w.leverancier.tel || '—'], ['E-mail', w.leverancier.email || '—'], ['Adres', w.leverancier.adres || '—'],
+          ]} />
+
+          {admin && (
+            <button onClick={handleDelete} className="tap" style={{ width: '100%', marginTop: 22, padding: '13px', borderRadius: 14, border: 'none', cursor: 'pointer',
+              background: 'var(--surface)', color: 'var(--red)', fontSize: 15, fontWeight: 590, fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: 'var(--shadow), var(--hair)', opacity: deleting ? 0.6 : 1 }}>
+              <window.IcTrash size={16} /> {deleting ? 'Verwijderen…' : 'Verwijder wijn'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {zoom && (
+        <div onClick={() => setZoom(false)} style={{ position: 'absolute', inset: 0, zIndex: 80,
+          background: 'rgba(12,10,10,0.92)', backdropFilter: 'blur(8px)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+          <div style={{ position: 'absolute', top: 56, right: 18 }}>
+            <window.GlassBtn dark><window.IcX size={18} /></window.GlassBtn>
+          </div>
+          <window.WineThumb w={w} h={420} year={w.jaar} shelf label big />
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#fff' }}>{w.naam}</div>
+            <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{[w.jaar, w.regio].filter(Boolean).join(' · ')}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+window.DetailScreen = DetailScreen;
+  </script>
+
+  <!-- ───────────────────────── nieuwe fles / bewerken ───────────────────────── -->
+  <script type="text/babel">
+const { useState: useAddState } = React;
+
+function AddField({ label, value, onChange, placeholder, type = 'text', suffix }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', minHeight: 46, padding: '8px 16px', gap: 12 }}>
+      <span style={{ fontSize: 15, color: 'var(--muted)', flexShrink: 0, fontWeight: 400, width: 92 }}>{label}</span>
+      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type} inputMode={type === 'number' ? 'decimal' : undefined}
+        style={{ flex: 1, border: 'none', background: 'none', outline: 'none', textAlign: 'right', fontSize: 15, fontWeight: 450, color: 'var(--ink)', fontFamily: 'inherit', minWidth: 0 }} />
+      {suffix && <span style={{ fontSize: 13.5, color: 'var(--faint)', flexShrink: 0 }}>{suffix}</span>}
+    </div>
+  );
+}
+function AddLabel({ children }) {
+  return <div style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)', padding: '0 6px 8px' }}>{children}</div>;
+}
+function AddGroup({ title, rows, defaultOpen = true }) {
+  const [open, setOpen] = useAddState(defaultOpen);
+  return (
+    <div style={{ marginTop: 22 }}>
+      <button onClick={() => setOpen(o => !o)} className="tap" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: 'none', border: 'none', padding: '0 6px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>
+        <span style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)' }}>{title}</span>
+        <window.IcChevDown size={15} style={{ color: 'var(--faint)', transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .2s' }} />
+      </button>
+      {open && (
+        <div className="add-group">
+          {rows.map((c, i) => <div key={i} style={{ borderTop: i ? '0.5px solid var(--sep)' : 'none' }}>{c}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function wineToForm(w) {
+  return {
+    naam: w.naam || '', soort: w.soort || 'Rood', aantal: w.aantal || 0, jaar: w.jaar || '',
+    kast: w.kast || 'Niet ingedeeld', druif: w.druif || '', land: w.land || '', regio: w.regio || '',
+    vivino: w.vivino || '', mijn: w.mijn || '', prijs: w.prijs || '', notitie: w.notitie || '',
+  };
+}
+function formToPayload(f, rowNumber) {
+  const p = {
+    name: f.naam, type: f.soort, grape: f.druif, country: f.land, region: f.regio,
+    year: f.jaar, quantity: f.aantal, vivino: f.vivino, score: f.mijn,
+    currentPrice: f.prijs, cabinet: f.kast, note: f.notitie,
+  };
+  if (rowNumber) p.rowNumber = rowNumber;
+  return p;
+}
+
+function AddScreen({ onClose, editWine }) {
+  const isEdit = !!editWine;
+  const [f, setF] = useAddState(isEdit ? wineToForm(editWine) : { naam: '', soort: 'Rood', aantal: 1, jaar: '', kast: 'Wijnkast 1', druif: '', land: '', regio: '', vivino: '', mijn: '', prijs: '', notitie: '' });
+  const [saving, setSaving] = useAddState(false);
+  const [err, setErr] = useAddState('');
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const canSave = String(f.naam).trim().length > 0;
+
+  const save = async () => {
+    if (!canSave || saving) return;
+    setErr(''); setSaving(true);
+    try {
+      const payload = formToPayload(f, isEdit ? editWine.rowNumber : null);
+      if (isEdit) await window.patchWine(payload); else await window.addWineApi(payload);
+      if (window.__refresh) window.__refresh();
+      onClose(true);
+    } catch (e) { setErr(e.message || 'Opslaan mislukt'); setSaving(false); }
+  };
+
+  return (
+    <div style={{ position: 'relative', height: '100%', background: 'var(--bg)' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: 52, paddingBottom: 12, background: 'rgba(244,242,238,0.86)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px' }}>
+          <button onClick={() => onClose(false)} className="tap" style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--muted)', fontFamily: 'inherit', fontWeight: 450, padding: 0, minWidth: 64, textAlign: 'left' }}>Annuleer</button>
+          <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)', letterSpacing: -0.2 }}>{isEdit ? 'Wijn bewerken' : 'Nieuwe fles'}</span>
+          <span style={{ minWidth: 64 }} />
+        </div>
+      </div>
+
+      <div className="scroll" style={{ height: '100%', overflowY: 'auto', paddingTop: 104, paddingBottom: 100 }}>
+        <div style={{ padding: '0 18px' }}>
+          <div style={{ marginTop: 4 }}>
+            <AddLabel>Naam</AddLabel>
+            <div className="add-group" style={{ padding: '8px 16px' }}>
+              <input value={f.naam} onChange={e => set('naam', e.target.value)} placeholder="Bijv. Château Margaux"
+                style={{ width: '100%', border: 'none', background: 'none', outline: 'none', fontSize: 16, fontWeight: 500, color: 'var(--ink)', fontFamily: 'inherit' }} />
+            </div>
+          </div>
+
+          <div style={{ marginTop: 22 }}>
+            <AddLabel>Soort</AddLabel>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+              {['Rood', 'Wit', 'Rosé', 'Mousserend', 'Dessert'].map(s => {
+                const on = f.soort === s;
+                return (
+                  <button key={s} onClick={() => set('soort', s)} className="tap" style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 13px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                    fontSize: 13.5, fontWeight: 590, background: on ? 'var(--brand)' : 'var(--surface)', color: on ? '#fff' : 'var(--muted)', boxShadow: on ? 'none' : 'var(--hair)',
+                  }}>
+                    <window.IcGrape size={14} style={{ color: on ? '#fff' : (window.TYPE[s] ? window.TYPE[s].dot : 'var(--muted)') }} /> {s}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 22 }}>
+            <AddLabel>Aantal flessen</AddLabel>
+            <div className="add-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px' }}>
+              <span style={{ fontSize: 15, color: 'var(--muted)' }}>In voorraad</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <button onClick={() => set('aantal', Math.max(0, (+f.aantal || 0) - 1))} className="tap" style={{ width: 34, height: 34, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'var(--fill)', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><window.IcMinus size={16} /></button>
+                <span style={{ fontSize: 22, fontWeight: 680, color: 'var(--ink)', minWidth: 24, textAlign: 'center', letterSpacing: -0.5 }}>{f.aantal}</span>
+                <button onClick={() => set('aantal', (+f.aantal || 0) + 1)} className="tap" style={{ width: 34, height: 34, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><window.IcPlus size={16} /></button>
+              </div>
+            </div>
+          </div>
+
+          <AddGroup title="Herkomst" rows={[
+            <AddField key="jaar" label="Jaar" value={f.jaar} onChange={v => set('jaar', v)} placeholder="2017" type="number" />,
+            <AddField key="druif" label="Druifsoort" value={f.druif} onChange={v => set('druif', v)} placeholder="Nebbiolo" />,
+            <AddField key="land" label="Land" value={f.land} onChange={v => set('land', v)} placeholder="Italië" />,
+            <AddField key="regio" label="Regio" value={f.regio} onChange={v => set('regio', v)} placeholder="Piëmont" />,
+            <AddField key="kast" label="Wijnkast" value={f.kast} onChange={v => set('kast', v)} placeholder="Wijnkast 1" />,
+          ]} />
+
+          <AddGroup title="Waardering & prijs" rows={[
+            <AddField key="vivino" label="Vivino" value={f.vivino} onChange={v => set('vivino', v)} placeholder="4.4" type="number" suffix="/5" />,
+            <AddField key="mijn" label="Mijn score" value={f.mijn} onChange={v => set('mijn', v)} placeholder="8" type="number" suffix="/10" />,
+            <AddField key="prijs" label="Prijs/fles" value={f.prijs} onChange={v => set('prijs', v)} placeholder="75" type="number" suffix="€" />,
+          ]} />
+
+          <div style={{ marginTop: 22 }}>
+            <AddLabel>Notitie</AddLabel>
+            <div className="add-group" style={{ padding: '12px 16px' }}>
+              <textarea value={f.notitie} onChange={e => set('notitie', e.target.value)} placeholder="Bron, drinkvenster of opmerking…" rows={3}
+                style={{ width: '100%', border: 'none', background: 'none', outline: 'none', resize: 'none', fontSize: 15, color: 'var(--ink)', fontFamily: 'inherit', lineHeight: 1.45 }} />
+            </div>
+          </div>
+
+          {err && <div style={{ color: 'var(--red)', fontSize: 13, fontWeight: 500, padding: '16px 6px 0' }}>{err}</div>}
+        </div>
+      </div>
+
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 12, padding: '12px 18px 28px', background: 'linear-gradient(to top, var(--bg) 70%, rgba(244,242,238,0))' }}>
+        <button onClick={save} disabled={!canSave || saving} className="tap" style={{
+          width: '100%', padding: '15px', borderRadius: 15, border: 'none', cursor: (canSave && !saving) ? 'pointer' : 'default', fontFamily: 'inherit',
+          fontSize: 16.5, fontWeight: 600, background: (canSave && !saving) ? 'var(--brand)' : 'var(--fill)', color: (canSave && !saving) ? '#fff' : 'var(--faint)',
+        }}>{saving ? 'Opslaan…' : 'Opslaan'}</button>
+      </div>
+    </div>
+  );
+}
+
+window.AddScreen = AddScreen;
+  </script>
+
+  <!-- ───────────────────────── wijnkasten ───────────────────────── -->
+  <script type="text/babel">
+const { useState: useKastState } = React;
+const KAST_ORDER = ['Wijnkast 1', 'Wijnkast 2', 'Wijnkast 3', 'Niet ingedeeld'];
+
+function CabinetCard({ k, wines, onOpen, idx }) {
+  const [open, setOpen] = useKastState(idx === 0);
+  const count = wines.reduce((a, w) => a + w.aantal, 0);
+  const waarde = wines.reduce((a, w) => a + w.aantal * w.prijs, 0);
+  return (
+    <div style={{ marginTop: idx ? 14 : 0, background: 'var(--surface)', borderRadius: 18, boxShadow: 'var(--shadow), var(--hair)', overflow: 'hidden' }}>
+      <button onClick={() => setOpen(o => !o)} className="tap" style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--brand-pale)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <window.TabCellar size={19} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)', letterSpacing: -0.2 }}>{k}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 1 }}>{count} {count === 1 ? 'fles' : 'flessen'} · {window.fmtEur(waarde)}</div>
+        </div>
+        <span style={{ fontSize: 12.5, fontWeight: 590, color: 'var(--faint)' }}>{wines.length} {wines.length === 1 ? 'soort' : 'soorten'}</span>
+        <window.IcChevDown size={16} style={{ color: 'var(--faint)', flexShrink: 0, transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .2s' }} />
+      </button>
+      {open && wines.map(w => (
+        <button key={w.id} onClick={() => onOpen(w.id)} className="tap" style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px', border: 'none',
+          borderTop: '0.5px solid var(--sep)', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+          <div style={{ width: 34, height: 46, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f6f4ef', borderRadius: 9, overflow: 'hidden' }}>
+            <window.WineThumb w={w} h={40} label />
+          </div>
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+            <div style={{ fontSize: 15, fontWeight: 590, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.naam}</div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
+              <window.IcGrape size={12} style={{ color: (window.TYPE[w.soort] || window.TYPE.Rood).dot, flexShrink: 0 }} /> {w.soort}{w.jaar ? ' · ' + w.jaar : ''}
+            </div>
+          </div>
+          <window.StockBadge n={w.aantal} />
+          <window.IcChevR size={15} style={{ color: 'var(--faint)', flexShrink: 0 }} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function KastenScreen({ onOpen, onTab }) {
+  const groups = KAST_ORDER.map(k => ({ k, wines: window.WINES.filter(w => w.kast === k) })).filter(g => g.wines.length);
+  const totaal = window.WINES.reduce((a, w) => a + w.aantal, 0);
+
+  return (
+    <div style={{ position: 'relative', height: '100%', background: 'var(--bg)' }}>
+      <div className="scroll" style={{ height: '100%', overflowY: 'auto', paddingBottom: 104 }}>
+        <div style={{ padding: '54px 18px 0' }}>
+          <div style={{ height: 40, display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--faint)' }}>Indeling</span>
+          </div>
+          <h1 style={{ margin: '7px 0 0', fontSize: 31, fontWeight: 680, letterSpacing: -0.8, color: 'var(--ink)' }}>Wijnkasten</h1>
+          <div style={{ marginTop: 5, fontSize: 15, color: 'var(--muted)', fontWeight: 450 }}>{groups.length} {groups.length === 1 ? 'kast' : 'kasten'} in gebruik · {totaal} flessen</div>
+        </div>
+
+        <div style={{ padding: '22px 16px 0' }}>
+          {groups.map((g, i) => <CabinetCard key={g.k} k={g.k} wines={g.wines} onOpen={onOpen} idx={i} />)}
+          {groups.length === 0 && (
+            <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 15, padding: '40px 0' }}>Nog geen wijnen in een kast.</div>
+          )}
+        </div>
+      </div>
+      <window.TabBar active="kasten" onTab={onTab} />
+    </div>
+  );
+}
+
+window.KastenScreen = KastenScreen;
+  </script>
+
+  <!-- ───────────────────────── analyse ───────────────────────── -->
+  <script type="text/babel">
+const SOORT_ORDER = ['Rood', 'Wit', 'Rosé', 'Mousserend', 'Dessert'];
+
+function Donut({ segments, total }) {
+  const size = 168, r = 58, sw = 16, C = 2 * Math.PI * r;
+  const gap = 5;
+  let cum = 0;
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 168 168" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="84" cy="84" r={r} fill="none" stroke="var(--fill)" strokeWidth={sw} />
+        {total > 0 && segments.map((s, i) => {
+          const frac = s.value / total;
+          const arc = frac * C;
+          const drawn = Math.max(0, arc - gap);
+          const off = -cum * C;
+          cum += frac;
+          return (
+            <circle key={i} cx="84" cy="84" r={r} fill="none" stroke={s.color} strokeWidth={sw} strokeLinecap="round"
+              strokeDasharray={`${drawn} ${C}`} strokeDashoffset={off} />
+          );
+        })}
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--faint)' }}>Totaal</span>
+        <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--ink)', letterSpacing: -0.6, marginTop: 1 }}>{window.fmtEur(total)}</span>
+      </div>
+    </div>
+  );
+}
+
+function Bars({ rows, max, fmt }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {rows.map((r, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ width: 92, flexShrink: 0, fontSize: 13.5, color: 'var(--muted)', fontWeight: 450, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {r.dot && <span style={{ width: 7, height: 7, borderRadius: 999, background: r.dot, flexShrink: 0 }} />}
+            {r.label}
+          </span>
+          <div style={{ flex: 1, height: 10, borderRadius: 999, background: 'var(--fill)', overflow: 'hidden' }}>
+            <div style={{ width: `${max ? (r.value / max) * 100 : 0}%`, height: '100%', borderRadius: 999, background: r.color || 'var(--brand)' }} />
+          </div>
+          <span style={{ minWidth: 46, textAlign: 'right', fontSize: 14, fontWeight: 600, color: 'var(--ink)', letterSpacing: -0.2 }}>{fmt(r.value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChartCard({ title, sub, children, defaultOpen = true }) {
+  const [open, setOpen] = React.useState(defaultOpen);
+  return (
+    <div style={{ marginTop: 14, background: 'var(--surface)', borderRadius: 18, padding: 18, boxShadow: 'var(--shadow), var(--hair)' }}>
+      <button onClick={() => setOpen(o => !o)} className="tap" style={{ width: '100%', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 640, color: 'var(--ink)', letterSpacing: -0.2 }}>{title}</div>
+          {sub && <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{sub}</div>}
+        </div>
+        <window.IcChevDown size={16} style={{ color: 'var(--faint)', flexShrink: 0, transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .2s' }} />
+      </button>
+      {open && <div style={{ marginTop: 16 }}>{children}</div>}
+    </div>
+  );
+}
+
+function AnalyseScreen({ onTab }) {
+  const W = window.WINES;
+
+  const totaal = W.reduce((a, w) => a + w.aantal, 0);
+  const waarde = W.reduce((a, w) => a + w.aantal * w.prijs, 0);
+
+  const soort = SOORT_ORDER.map(s => {
+    const ws = W.filter(w => w.soort === s);
+    return { s, count: ws.reduce((a, w) => a + w.aantal, 0), val: ws.reduce((a, w) => a + w.aantal * w.prijs, 0), color: window.TYPE[s] ? window.TYPE[s].dot : 'var(--brand)' };
+  }).filter(x => x.count > 0 || x.val > 0);
+
+  const donutSegs = soort.filter(x => x.val > 0).sort((a, b) => b.val - a.val).map(x => ({ value: x.val, color: x.color, s: x.s }));
+
+  const landMap = {};
+  W.forEach(w => { if (w.land) landMap[w.land] = (landMap[w.land] || 0) + w.aantal * w.prijs; });
+  const land = Object.entries(landMap).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 7);
+
+  const kastMap = {}, kastValMap = {};
+  W.forEach(w => { if (w.aantal) { kastMap[w.kast] = (kastMap[w.kast] || 0) + w.aantal; kastValMap[w.kast] = (kastValMap[w.kast] || 0) + w.aantal * w.prijs; } });
+  const kastCombined = ['Wijnkast 1', 'Wijnkast 2', 'Wijnkast 3', 'Niet ingedeeld'].filter(k => kastMap[k]).map(k => ({ label: k, count: kastMap[k], val: kastValMap[k] }));
+  const maxKastVal = Math.max(1, ...kastCombined.map(k => k.val));
+
+  const stat = (label, val) => (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+      <span style={{ fontSize: 19, fontWeight: 640, color: 'var(--ink)', letterSpacing: -0.4 }}>{val}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 590, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--faint)' }}>{label}</span>
+    </div>
+  );
+  const sep = <div style={{ width: 0.5, alignSelf: 'stretch', background: 'var(--sep)' }} />;
+
+  return (
+    <div style={{ position: 'relative', height: '100%', background: 'var(--bg)' }}>
+      <div className="scroll" style={{ height: '100%', overflowY: 'auto', paddingBottom: 104 }}>
+        <div style={{ padding: '54px 18px 0' }}>
+          <div style={{ height: 40, display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--faint)' }}>Inzicht</span>
+          </div>
+          <h1 style={{ margin: '7px 0 0', fontSize: 31, fontWeight: 680, letterSpacing: -0.8, color: 'var(--ink)' }}>Analyse</h1>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 9, padding: '5px 11px', borderRadius: 999, background: 'var(--brand-pale)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--brand)' }} />
+            <span style={{ fontSize: 12.5, fontWeight: 590, color: 'var(--brand)' }}>Live gekoppeld · {W.length} wijnen</span>
+          </div>
+        </div>
+
+        <div style={{ padding: '18px 18px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', background: 'var(--surface)', borderRadius: 16, padding: '15px 6px', boxShadow: 'var(--shadow), var(--hair)' }}>
+            {stat('Flessen', totaal)}{sep}{stat('Waarde', window.fmtEur(waarde))}{sep}{stat('Soorten', soort.length)}
+          </div>
+
+          <ChartCard title="Waardeverdeling per soort" sub="Aandeel in totale kelderwaarde">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
+              <Donut segments={donutSegs} total={donutSegs.reduce((a, s) => a + s.value, 0)} />
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {donutSegs.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 2px', borderTop: i ? '0.5px solid var(--sep)' : 'none' }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 14, color: 'var(--ink)', fontWeight: 500 }}>{s.s}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', letterSpacing: -0.2 }}>{window.fmtEur(s.value)}</span>
+                    <span style={{ fontSize: 12.5, color: 'var(--faint)', minWidth: 34, textAlign: 'right' }}>{waarde ? Math.round(s.value / waarde * 100) : 0}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </ChartCard>
+
+          <ChartCard title="Flessen per soort">
+            <Bars rows={soort.map(x => ({ label: x.s, value: x.count, dot: x.color, color: x.color }))}
+              max={Math.max(1, ...soort.map(x => x.count))} fmt={v => v} />
+          </ChartCard>
+
+          <ChartCard title="Waarde per land">
+            <Bars rows={land} max={land[0] ? land[0].value : 1} fmt={v => window.fmtEur(v)} />
+          </ChartCard>
+
+          <ChartCard title="Per wijnkast" sub="Flessen en waarde">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {kastCombined.map((k, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ width: 92, flexShrink: 0, fontSize: 13.5, color: 'var(--muted)', fontWeight: 450, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.label}</span>
+                  <div style={{ flex: 1, height: 10, borderRadius: 999, background: 'var(--fill)', overflow: 'hidden' }}>
+                    <div style={{ width: `${(k.val / maxKastVal) * 100}%`, height: '100%', borderRadius: 999, background: 'var(--brand)' }} />
+                  </div>
+                  <div style={{ minWidth: 80, textAlign: 'right' }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', letterSpacing: -0.2 }}>{window.fmtEur(k.val)}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--faint)', marginTop: 1 }}>{k.count} {k.count === 1 ? 'fles' : 'flessen'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ChartCard>
+        </div>
+      </div>
+      <window.TabBar active="analyse" onTab={onTab} />
+    </div>
+  );
+}
+
+window.AnalyseScreen = AnalyseScreen;
+  </script>
+
+  <!-- ───────────────────────── account ───────────────────────── -->
+  <script type="text/babel">
+const { useState: useAcctState } = React;
+
+function RoleBadge({ rol }) {
+  const admin = rol === 'Beheerder';
+  return <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, color: admin ? '#fff' : 'var(--muted)', background: admin ? 'var(--brand)' : 'var(--fill)' }}>{rol}</span>;
+}
+function Avatar({ label, size = 34 }) {
+  return <div style={{ width: size, height: size, borderRadius: 999, background: 'var(--brand-pale)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.4, fontWeight: 640, flexShrink: 0 }}>{label}</div>;
+}
+
+function AccountScreen({ me, onTab }) {
+  const admin = me && me.role === 'admin';
+  const username = (me && me.username) || '';
+  const [pwOpen, setPwOpen] = useAcctState(false);
+  const [pw1, setPw1] = useAcctState('');
+  const [pw2, setPw2] = useAcctState('');
+  const [msg, setMsg] = useAcctState(null);
+  const [busy, setBusy] = useAcctState(false);
+  const rowBase = { display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px' };
+
+  const changePw = async () => {
+    if (busy) return;
+    if (pw1.length < 8) { setMsg({ t: 'Wachtwoord te kort (minimaal 8 tekens).', c: 'var(--red)' }); return; }
+    if (pw1 !== pw2) { setMsg({ t: 'Wachtwoorden komen niet overeen.', c: 'var(--red)' }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await window.fetchJSON('/api/auth?action=change-password', { method: 'POST', body: JSON.stringify({ newPassword: pw1 }) });
+      if (r.ok) { setMsg({ t: '✓ Wachtwoord gewijzigd.', c: 'var(--brand)' }); setPw1(''); setPw2(''); setPwOpen(false); }
+      else setMsg({ t: r.data.message || 'Wijzigen mislukt.', c: 'var(--red)' });
+    } catch (e) { setMsg({ t: 'Netwerkfout.', c: 'var(--red)' }); }
+    setBusy(false);
+  };
+
+  const logout = async () => {
+    try { await window.fetchJSON('/api/auth?action=logout', { method: 'POST' }); } catch (e) {}
+    window.location.reload();
+  };
+
+  return (
+    <div style={{ position: 'relative', height: '100%', background: 'var(--bg)' }}>
+      <div className="scroll" style={{ height: '100%', overflowY: 'auto', paddingBottom: 104 }}>
+        <div style={{ padding: '54px 18px 0' }}>
+          <div style={{ height: 40, display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--faint)' }}>Mijn account</span>
+          </div>
+          <h1 style={{ margin: '7px 0 0', fontSize: 31, fontWeight: 680, letterSpacing: -0.8, color: 'var(--ink)' }}>Account</h1>
+        </div>
+
+        <div style={{ padding: '20px 18px 0' }}>
+          <div className="add-group" style={{ ...rowBase, padding: '14px 16px' }}>
+            <Avatar label={(username[0] || 'J').toUpperCase()} size={44} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 16.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{username}</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 1 }}>{admin ? 'Volledig beheer' : 'Alleen lezen'}</div>
+            </div>
+            <RoleBadge rol={admin ? 'Beheerder' : 'Lezer'} />
+          </div>
+
+          <window.LabeledSection label="Mijn beveiliging">
+            <div className="add-group">
+              <button onClick={() => { setPwOpen(o => !o); setMsg(null); }} className="tap" style={{ width: '100%', ...rowBase, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <span style={{ flex: 1, textAlign: 'left', fontSize: 15, color: 'var(--ink)', fontWeight: 500 }}>Wachtwoord wijzigen</span>
+                <window.IcChevDown size={16} style={{ color: 'var(--faint)', transform: pwOpen ? 'none' : 'rotate(-90deg)', transition: 'transform .2s' }} />
+              </button>
+              {pwOpen && (
+                <div style={{ padding: '4px 16px 16px', borderTop: '0.5px solid var(--sep)' }}>
+                  <input value={pw1} onChange={e => setPw1(e.target.value)} placeholder="Nieuw wachtwoord" type="password" autoComplete="new-password"
+                    style={{ width: '100%', border: 'none', borderBottom: '0.5px solid var(--sep)', background: 'none', outline: 'none', fontSize: 15.5, color: 'var(--ink)', fontFamily: 'inherit', padding: '12px 0' }} />
+                  <input value={pw2} onChange={e => setPw2(e.target.value)} placeholder="Bevestig wachtwoord" type="password" autoComplete="new-password"
+                    style={{ width: '100%', border: 'none', borderBottom: '0.5px solid var(--sep)', background: 'none', outline: 'none', fontSize: 15.5, color: 'var(--ink)', fontFamily: 'inherit', padding: '12px 0' }} />
+                  <button onClick={changePw} disabled={busy} className="tap" style={{ width: '100%', marginTop: 14, padding: '12px', borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, background: 'var(--brand)', color: '#fff' }}>{busy ? 'Opslaan…' : 'Opslaan'}</button>
+                </div>
+              )}
+            </div>
+            {msg && <div style={{ fontSize: 12.5, color: msg.c, padding: '8px 8px 0', fontWeight: 500 }}>{msg.t}</div>}
+          </window.LabeledSection>
+
+          {admin && (
+            <div style={{ fontSize: 12.5, color: 'var(--faint)', padding: '20px 8px 0', lineHeight: 1.5 }}>
+              Gebruikersbeheer (gebruikers toevoegen/verwijderen, 2FA, wijnkasten hernoemen) doe je
+              voorlopig in de klassieke app.
+            </div>
+          )}
+
+          <button onClick={logout} className="tap" style={{ width: '100%', marginTop: 24, padding: '14px', borderRadius: 14, border: 'none', cursor: 'pointer',
+            background: 'var(--surface)', color: 'var(--red)', fontSize: 15, fontWeight: 590, fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: 'var(--shadow), var(--hair)' }}>
+            <window.IcLogout size={17} /> Uitloggen
+          </button>
+        </div>
+      </div>
+      <window.TabBar active="account" onTab={onTab} />
+    </div>
+  );
+}
+
+window.AccountScreen = AccountScreen;
+  </script>
+
+  <!-- ───────────────────────── app-shell: auth-gate + navigatie ───────────────────────── -->
+  <script type="text/babel">
+const { useState: useRootState } = React;
+
+function Splash() {
+  return (
+    <div className="login-stage">
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, color: 'var(--muted)' }}>
+        <span className="add-spin" style={{ width: 26, height: 26, borderRadius: 999, border: '2.5px solid var(--brand-pale)', borderTopColor: 'var(--brand)', display: 'inline-block' }} />
+        <span style={{ fontSize: 14, fontWeight: 500 }}>Wijnkelder laden…</span>
+      </div>
+    </div>
+  );
+}
+
+function BrandMark() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginBottom: 26 }}>
+      <div style={{ width: 56, height: 56, borderRadius: 18, background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow)' }}>
+        <window.IcGrape size={30} />
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 680, letterSpacing: -0.4, color: 'var(--ink)' }}>Wijnkelder</div>
+    </div>
+  );
+}
+
+function LoginScreen({ onAuthed }) {
+  const [stage, setStage] = useRootState('login'); // login | twofa
+  const [email, setEmail] = useRootState('');
+  const [pw, setPw] = useRootState('');
+  const [code, setCode] = useRootState('');
+  const [challenge, setChallenge] = useRootState('');
+  const [err, setErr] = useRootState('');
+  const [busy, setBusy] = useRootState(false);
+
+  const inputStyle = { width: '100%', border: 'none', background: 'var(--fill)', borderRadius: 12, outline: 'none', fontSize: 16, color: 'var(--ink)', fontFamily: 'inherit', padding: '13px 14px' };
+
+  const doLogin = async (e) => {
+    if (e) e.preventDefault();
+    if (busy) return;
+    setErr(''); setBusy(true);
+    try {
+      const r = await window.fetchJSON('/api/auth', { method: 'POST', body: JSON.stringify({ username: email.trim(), password: pw }) });
+      if (r.ok && r.data.require2fa) { setChallenge(r.data.challengeToken); setStage('twofa'); setBusy(false); return; }
+      if (r.ok && r.data.ok) { onAuthed({ username: r.data.username, role: r.data.role }); return; }
+      setErr(r.data.message || 'Inloggen mislukt.'); setBusy(false);
+    } catch (x) { setErr('Netwerkfout — probeer opnieuw.'); setBusy(false); }
+  };
+
+  const do2fa = async (e) => {
+    if (e) e.preventDefault();
+    if (busy) return;
+    setErr(''); setBusy(true);
+    try {
+      const r = await window.fetchJSON('/api/auth?action=verify-2fa', { method: 'POST', body: JSON.stringify({ challengeToken: challenge, code: code.trim() }) });
+      if (r.ok && r.data.ok) { onAuthed({ username: r.data.username, role: r.data.role }); return; }
+      setErr(r.data.message || 'Onjuiste code.'); setBusy(false);
+    } catch (x) { setErr('Netwerkfout — probeer opnieuw.'); setBusy(false); }
+  };
+
+  return (
+    <div className="login-stage">
+      <div style={{ width: '100%', maxWidth: 360 }}>
+        <BrandMark />
+        <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 22, boxShadow: 'var(--shadow), var(--hair)' }}>
+          {stage === 'login' ? (
+            <form onSubmit={doLogin}>
+              <h1 style={{ margin: '0 0 16px', fontSize: 20, fontWeight: 660, letterSpacing: -0.3, color: 'var(--ink)' }}>Inloggen</h1>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <input value={email} onChange={e => setEmail(e.target.value)} placeholder="E-mailadres" type="email" autoComplete="username email" autoFocus inputMode="email" style={inputStyle} />
+                <input value={pw} onChange={e => setPw(e.target.value)} placeholder="Wachtwoord" type="password" autoComplete="current-password" style={inputStyle} />
+              </div>
+              {err && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--red)', fontWeight: 500 }}>{err}</div>}
+              <button type="submit" disabled={busy} className="tap" style={{ width: '100%', marginTop: 16, padding: '14px', borderRadius: 13, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 16, fontWeight: 600, background: 'var(--brand)', color: '#fff' }}>{busy ? 'Bezig…' : 'Inloggen'}</button>
+            </form>
+          ) : (
+            <form onSubmit={do2fa}>
+              <h1 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 660, letterSpacing: -0.3, color: 'var(--ink)' }}>Verificatie</h1>
+              <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5 }}>Voer de 6-cijferige code uit je authenticator-app in.</p>
+              <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" inputMode="numeric" autoComplete="one-time-code" autoFocus
+                style={{ ...inputStyle, textAlign: 'center', letterSpacing: 8, fontSize: 22, fontWeight: 600 }} />
+              {err && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--red)', fontWeight: 500 }}>{err}</div>}
+              <button type="submit" disabled={busy} className="tap" style={{ width: '100%', marginTop: 16, padding: '14px', borderRadius: 13, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 16, fontWeight: 600, background: 'var(--brand)', color: '#fff' }}>{busy ? 'Bezig…' : 'Verifiëren'}</button>
+              <button type="button" onClick={() => { setStage('login'); setErr(''); setCode(''); }} className="tap" style={{ width: '100%', marginTop: 10, padding: '10px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, color: 'var(--muted)' }}>← Terug naar inloggen</button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WineApp({ me }) {
+  const [screen, setScreen] = useRootState('list');
+  const [id, setId] = useRootState(null);
+  const [adding, setAdding] = useRootState(false);
+  const [editing, setEditing] = useRootState(null);
+  const [tab, setTab] = useRootState('kelder');
+
+  const wine = window.WINES.find(w => w.id === id) || null;
+  const detailOpen = screen === 'detail' && !!wine;
+  const sheetOpen = adding || !!editing;
+
+  const ease = 'transform .36s cubic-bezier(.32,.72,0,1)';
+  const open = (wid) => { setId(wid); setScreen('detail'); };
+  const refresh = () => { if (window.__refresh) window.__refresh(); };
+
+  let base;
+  if (tab === 'kelder') base = <window.ListScreen onOpen={open} onAdd={() => setAdding(true)} onTab={setTab} />;
+  else if (tab === 'kasten') base = <window.KastenScreen onOpen={open} onTab={setTab} />;
+  else if (tab === 'analyse') base = <window.AnalyseScreen onTab={setTab} />;
+  else base = <window.AccountScreen me={me} onTab={setTab} />;
+
+  return (
+    <div style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', inset: 0, transition: ease, transform: detailOpen ? 'translateX(-24%)' : 'none' }}>
+        {base}
+        {detailOpen && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.04)', zIndex: 40 }} />}
+      </div>
+
+      <div style={{ position: 'absolute', inset: 0, transition: ease,
+        transform: detailOpen ? 'translateX(0)' : 'translateX(100%)',
+        boxShadow: detailOpen ? '-10px 0 30px rgba(0,0,0,0.10)' : 'none', pointerEvents: detailOpen ? 'auto' : 'none' }}>
+        {wine && <window.DetailScreen key={wine.id} w={wine}
+          onBack={() => setScreen('list')}
+          onEdit={(w) => setEditing(w)}
+          onDeleted={() => { setScreen('list'); setId(null); refresh(); }} />}
+      </div>
+
+      <div style={{ position: 'absolute', inset: 0, zIndex: 70, transition: 'transform .4s cubic-bezier(.32,.72,0,1)',
+        transform: sheetOpen ? 'translateY(0)' : 'translateY(102%)', pointerEvents: sheetOpen ? 'auto' : 'none',
+        boxShadow: '0 -10px 40px rgba(0,0,0,0.12)', borderRadius: '20px 20px 0 0', overflow: 'hidden' }}>
+        <window.AddScreen
+          key={editing ? ('edit-' + editing.id) : (adding ? 'add' : 'closed')}
+          editWine={editing}
+          onClose={(saved) => { setAdding(false); setEditing(null); if (saved) refresh(); }} />
+      </div>
+    </div>
+  );
+}
+
+function RootApp() {
+  const [phase, setPhase] = useRootState('checking'); // checking | login | ready
+  const [me, setMe] = useRootState(null);
+  const [, force] = useRootState(0);
+
+  const becomeReady = async (user) => {
+    window.IS_ADMIN = (user.role === 'admin');
+    setMe(user);
+    try { await window.loadWines(); }
+    catch (e) { setPhase('login'); return; }
+    setPhase('ready');
+  };
+
+  React.useEffect(() => {
+    window.__refresh = () => force(x => x + 1);
+    (async () => {
+      try {
+        const r = await window.fetchJSON('/api/auth');
+        if (r.ok && r.data.ok) { await becomeReady({ username: r.data.username, role: r.data.role }); }
+        else setPhase('login');
+      } catch (e) { setPhase('login'); }
+    })();
+  }, []);
+
+  if (phase === 'checking') return <Splash />;
+  if (phase === 'login') return <LoginScreen onAuthed={becomeReady} />;
+  return <div className="app-shell"><WineApp me={me} /></div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<RootApp />);
+  </script>
+</body>
+</html>
