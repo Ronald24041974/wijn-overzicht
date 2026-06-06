@@ -14,9 +14,9 @@ class handler(BaseHandler):
         mode = parse_qs(parsed.query).get("mode", [""])[0]
         try:
             data = self.read_json()
-            name = (data.get("name") or "").strip()
-            if not name:
-                self.json_response(400, {"message": "Naam is vereist."})
+            wine_id = str(data.get("id") or "").strip()
+            if not wine_id:
+                self.json_response(400, {"message": "Wijn-id is vereist."})
                 return
             if mode == "url":
                 image_url = (data.get("imageUrl") or "").strip()
@@ -41,8 +41,8 @@ class handler(BaseHandler):
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE wines SET image_data=%s, thumb_data=%s, updatedat=%s WHERE name=%s",
-                        (processed, thumb, now, name)
+                        "UPDATE wines SET image_data=%s, thumb_data=%s, updatedat=%s WHERE id=%s",
+                        (processed, thumb, now, wine_id)
                     )
                 conn.commit()
             self.json_response(200, {"ok": True, "updatedAt": now})

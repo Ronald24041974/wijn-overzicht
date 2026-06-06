@@ -11,13 +11,13 @@ class handler(BaseHandler):
         if not check_auth(self): return
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
-        name = (params.get("name", [""])[0]).strip()
-        if not name:
+        wine_id = (params.get("id", [""])[0]).strip()
+        if not wine_id:
             self.send_error(400)
             return
         with get_db() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT image_data FROM wines WHERE name=%s", (name,))
+                cur.execute("SELECT image_data FROM wines WHERE id=%s", (wine_id,))
                 row = cur.fetchone()
         if not row or not row["image_data"]:
             self.send_error(404)
@@ -34,15 +34,15 @@ class handler(BaseHandler):
         if not require_admin(self): return
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
-        name = (params.get("name", [""])[0]).strip()
-        if not name:
-            self.json_response(400, {"message": "Naam is vereist."})
+        wine_id = (params.get("id", [""])[0]).strip()
+        if not wine_id:
+            self.json_response(400, {"message": "Wijn-id is vereist."})
             return
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE wines SET image_data=NULL, thumb_data=NULL, proposed_data=NULL WHERE name=%s",
-                    (name,)
+                    "UPDATE wines SET image_data=NULL, thumb_data=NULL, proposed_data=NULL WHERE id=%s",
+                    (wine_id,)
                 )
             conn.commit()
         self.json_response(200, {"ok": True, "removed": True})

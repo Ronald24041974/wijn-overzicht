@@ -14,14 +14,14 @@ class handler(BaseHandler):
         action = parse_qs(parsed.query).get("action", [""])[0]
         try:
             data = self.read_json()
-            name = (data.get("name") or "").strip()
-            if not name:
-                self.json_response(400, {"message": "Naam is vereist."})
+            wine_id = str(data.get("id") or "").strip()
+            if not wine_id:
+                self.json_response(400, {"message": "Wijn-id is vereist."})
                 return
             if action == "confirm":
                 with get_db() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("SELECT proposed_data FROM wines WHERE name=%s", (name,))
+                        cur.execute("SELECT proposed_data FROM wines WHERE id=%s", (wine_id,))
                         row = cur.fetchone()
                     if not row or not row["proposed_data"]:
                         self.json_response(404, {"message": "Geen voorgestelde afbeelding gevonden."})
@@ -31,15 +31,15 @@ class handler(BaseHandler):
                     now = int(time.time())
                     with conn.cursor() as cur:
                         cur.execute(
-                            "UPDATE wines SET image_data=%s, thumb_data=%s, proposed_data=NULL, updatedat=%s WHERE name=%s",
-                            (proposed, thumb, now, name)
+                            "UPDATE wines SET image_data=%s, thumb_data=%s, proposed_data=NULL, updatedat=%s WHERE id=%s",
+                            (proposed, thumb, now, wine_id)
                         )
                     conn.commit()
                 self.json_response(200, {"ok": True})
             elif action == "discard":
                 with get_db() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("UPDATE wines SET proposed_data=NULL WHERE name=%s", (name,))
+                        cur.execute("UPDATE wines SET proposed_data=NULL WHERE id=%s", (wine_id,))
                     conn.commit()
                 self.json_response(200, {"ok": True})
             else:
