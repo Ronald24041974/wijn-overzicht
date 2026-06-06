@@ -68,16 +68,16 @@ function wineTypeColor(type) {
   return map[type] || 'var(--c-wine-other)';
 }
 function wineImageUrl(wine) {
-  const v = imageCacheBust[wine.name] || wine.updatedAt || '';
+  const v = imageCacheBust[wine.rowNumber] || wine.updatedAt || '';
   const bust = v ? `&v=${v}` : '';
-  return `/api/wine-image?name=${encodeURIComponent(wine.name || '')}${bust}`;
+  return `/api/wine-image?id=${encodeURIComponent(wine.rowNumber || '')}${bust}`;
 }
 function wineThumbUrl(wine) {
   // Gebruik updatedAt uit de DB als primaire cache bust, imageCacheBust als fallback
   // (imageCacheBust wordt gezet bij handmatige upload/wijziging)
-  const v = imageCacheBust[wine.name] || wine.updatedAt || '';
+  const v = imageCacheBust[wine.rowNumber] || wine.updatedAt || '';
   const bust = v ? `&v=${v}` : '';
-  return `/api/wine-thumb?name=${encodeURIComponent(wine.name || '')}${bust}`;
+  return `/api/wine-thumb?id=${encodeURIComponent(wine.rowNumber || '')}${bust}`;
 }
 function isMobile() { return window.innerWidth < 768; }
 
@@ -152,14 +152,14 @@ async function addWine(formData) {
     render();
 
     if (photoFile && photoMode === 'upload') {
-      const wineName = data.wine?.name || formData.name;
+      const wineId = data.wine?.rowNumber;
       try {
         statusMsg = 'Foto vrijstaand maken…';
         render();
-        const imgData = await uploadImageFile(wineName, photoFile);
+        const imgData = await uploadImageFile(wineId, photoFile);
         const bust = imgData.updatedAt || Date.now();
-        imageCacheBust[wineName] = bust;
-        wines = wines.map(w => w.name === wineName ? { ...w, updatedAt: bust } : w);
+        imageCacheBust[wineId] = bust;
+        wines = wines.map(w => w.rowNumber === wineId ? { ...w, updatedAt: bust } : w);
         statusMsg = 'Wijn toegevoegd.';
       } catch (imgErr) {
         statusMsg = `Wijn toegevoegd — foto mislukt: ${imgErr.message}`;
@@ -960,6 +960,7 @@ async function triggerAutoImageCheck(wine) {
   render();
   try {
     const params = new URLSearchParams({
+      id: String(wine.rowNumber || ''),
       name: wine.name,
       type: wine.type || '',
       year: wine.year ? String(wine.year) : '',
@@ -991,11 +992,11 @@ async function handleSelectImage(wine, imageUrl) {
     const r = await fetch('/api/set-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: wine.name, imageUrl }),
+      body: JSON.stringify({ id: wine.rowNumber, imageUrl }),
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.message || 'Opslaan mislukt');
-    imageCacheBust[wine.name] = Date.now();
+    imageCacheBust[wine.rowNumber] = Date.now();
     imagePicker = { wineId: null, open: false, status: '', images: [], error: '' };
   } catch (e) {
     imagePicker = { ...imagePicker, status: 'error', error: e.message };
@@ -1010,11 +1011,11 @@ async function handleConfirmProposed(wine) {
     const r = await fetch('/api/confirm-proposed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: wine.name }),
+      body: JSON.stringify({ id: wine.rowNumber }),
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.message || 'Opslaan mislukt');
-    imageCacheBust[wine.name] = Date.now();
+    imageCacheBust[wine.rowNumber] = Date.now();
     imagePicker = { wineId: null, open: false, status: '', images: [], source: '', proposed: null, error: '' };
   } catch (e) {
     imagePicker = { ...imagePicker, status: 'error', error: e.message };
@@ -1026,7 +1027,7 @@ async function handleDiscardProposed(wine) {
   await fetch('/api/discard-proposed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: wine.name }),
+    body: JSON.stringify({ id: wine.rowNumber }),
   });
   imagePicker = { wineId: null, open: false, status: '', images: [], source: '', proposed: null, error: '' };
   render();
@@ -1035,8 +1036,8 @@ async function handleDiscardProposed(wine) {
 async function handleDeleteImage(wine) {
   if (!confirm(`Afbeelding van "${wine.name}" verwijderen?`)) return;
   try {
-    await fetch(`/api/wine-image?name=${encodeURIComponent(wine.name)}`, { method: 'DELETE' });
-    imageCacheBust[wine.name] = Date.now();
+    await fetch(`/api/wine-image?id=${encodeURIComponent(wine.rowNumber)}`, { method: 'DELETE' });
+    imageCacheBust[wine.rowNumber] = Date.now();
     render();
   } catch (e) { /* stil mislukken */ }
 }
@@ -1093,12 +1094,12 @@ async function compressImageFile(file, { maxSize = 1600, quality = 0.85 } = {}) 
   return compressedDataUrl.split(',')[1];
 }
 
-async function uploadImageFile(wineName, file) {
+async function uploadImageFile(wineId, file) {
   const imageData = await compressImageFile(file);
   const r = await fetch('/api/upload-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: wineName, imageData }),
+    body: JSON.stringify({ id: wineId, imageData }),
   });
   let data = null;
   try { data = await r.json(); } catch { /* niet-JSON response */ }
@@ -1114,12 +1115,12 @@ async function handleUploadImage(wine) {
   uploadState = { ...uploadState, status: 'uploading', error: '' };
   render();
   try {
-    const data = await uploadImageFile(wine.name, uploadState.file);
+    const data = await uploadImageFile(wine.rowNumber, uploadState.file);
     if (uploadState.previewUrl) URL.revokeObjectURL(uploadState.previewUrl);
     uploadState = { file: null, previewUrl: null, status: '', error: '' };
     const bust = data.updatedAt || Date.now();
-    imageCacheBust[wine.name] = bust;
-    wines = wines.map(w => w.name === wine.name ? { ...w, updatedAt: bust } : w);
+    imageCacheBust[wine.rowNumber] = bust;
+    wines = wines.map(w => w.rowNumber === wine.rowNumber ? { ...w, updatedAt: bust } : w);
     imagePicker = { wineId: null, open: false, status: '', images: [], source: '', proposed: null, error: '' };
   } catch (e) {
     uploadState = { ...uploadState, status: 'error', error: e.message };

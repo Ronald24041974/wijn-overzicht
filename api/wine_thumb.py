@@ -11,14 +11,14 @@ class handler(BaseHandler):
         if not check_auth(self): return
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
-        name = (params.get("name", [""])[0]).strip()
-        if not name:
+        wine_id = (params.get("id", [""])[0]).strip()
+        if not wine_id:
             self.send_error(400)
             return
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT thumb_data, image_data FROM wines WHERE name=%s", (name,)
+                    "SELECT thumb_data, image_data FROM wines WHERE id=%s", (wine_id,)
                 )
                 row = cur.fetchone()
         if not row:

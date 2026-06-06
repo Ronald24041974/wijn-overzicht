@@ -15,7 +15,7 @@ _TYPE_HINTS = {
 }
 
 
-def _find_online_and_store_proposed(name: str, wine_type: str, year: str) -> bool:
+def _find_online_and_store_proposed(wine_id: str, name: str, wine_type: str, year: str) -> bool:
     try:
         client = get_anthropic_client()
     except ValueError:
@@ -58,7 +58,7 @@ def _find_online_and_store_proposed(name: str, wine_type: str, year: str) -> boo
                 processed = remove_background(img_bytes) if not has_transparency(img_bytes) else normalize_transparent(img_bytes)
                 with get_db() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("UPDATE wines SET proposed_data=%s WHERE name=%s", (processed, name))
+                        cur.execute("UPDATE wines SET proposed_data=%s WHERE id=%s", (processed, wine_id))
                     conn.commit()
                 return True
             except Exception:
@@ -73,10 +73,11 @@ class handler(BaseHandler):
         if not check_auth(self): return
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
+        wine_id = (params.get("id", [""])[0]).strip()
         name = (params.get("name", [""])[0]).strip()
         wine_type = (params.get("type", [""])[0]).strip()
         year = (params.get("year", [""])[0]).strip()
-        if not name:
+        if not name or not wine_id:
             self.send_error(400)
             return
         type_hint = _TYPE_HINTS.get(wine_type, "")
@@ -87,6 +88,6 @@ class handler(BaseHandler):
         if urls:
             self.json_response(200, {"images": urls, "source": "vivino", "proposed": None})
             return
-        found = _find_online_and_store_proposed(name, wine_type, year)
-        proposed_url = f"/api/proposed-image?name={quote(name)}" if found else None
+        found = _find_online_and_store_proposed(wine_id, name, wine_type, year)
+        proposed_url = f"/api/proposed-image?id={quote(str(wine_id))}" if found else None
         self.json_response(200, {"images": [], "source": "internet", "proposed": proposed_url})
