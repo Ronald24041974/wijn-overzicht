@@ -130,8 +130,13 @@ def get_token_from_request(handler) -> str | None:
 
 
 def _cookie_flags() -> str:
+    # SameSite=Lax i.p.v. Strict: bij een iOS-PWA (app vanaf beginscherm) wordt elke
+    # start als externe navigatie gezien; een Strict-cookie wordt dan niet meegestuurd,
+    # waardoor je na wachtwoord+2FA alsnog uitgelogd lijkt en opnieuw moet inloggen.
+    # Lax stuurt de cookie wel mee bij het openen, en blokkeert nog steeds CSRF op
+    # cross-site POST's.
     secure = "" if os.environ.get("DEV_MODE") else " Secure;"
-    return f"HttpOnly;{secure} SameSite=Strict"
+    return f"HttpOnly;{secure} SameSite=Lax"
 
 def set_auth_cookie(handler, token: str):
     handler.send_header(
