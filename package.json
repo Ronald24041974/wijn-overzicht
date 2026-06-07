@@ -1,0 +1,7 @@
+{
+  "name": "wijn-overzicht",
+  "private": true,
+  "dependencies": {
+    "@vercel/edge": "^1.2.2"
+  }
+}

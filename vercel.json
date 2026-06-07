@@ -23,7 +23,6 @@
     { "source": "/api/upload-image",     "destination": "/api/image_input?mode=data" },
     { "source": "/api/confirm-proposed", "destination": "/api/proposed_action?action=confirm" },
     { "source": "/api/discard-proposed", "destination": "/api/proposed_action?action=discard" },
-    { "source": "/api/find-suppliers",   "destination": "/api/find_suppliers" },
-    { "source": "/", "has": [{ "type": "host", "value": "wijn-overzicht-2.vercel.app" }], "destination": "/kelder.html" }
+    { "source": "/api/find-suppliers",   "destination": "/api/find_suppliers" }
   ]
 }
