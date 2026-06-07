@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Wijnkelder</title>
+<title>Wijnoverzicht</title>
 <meta name="theme-color" content="#1f3c36" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-title" content="Wijnkelder" />
+<meta name="apple-mobile-web-app-title" content="Wijnoverzicht" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <style>
   :root {
@@ -403,7 +403,7 @@ const { useState: useS } = React;
 
 function TabBar({ active = 'kelder', onTab }) {
   const tabs = [
-    ['kelder', 'Kelder', window.TabList],
+    ['kelder', 'Overzicht', window.TabList],
     ['kasten', 'Kasten', window.TabCellar],
     ['analyse', 'Analyse', window.TabChart],
     ['account', 'Account', window.TabUser],
@@ -996,6 +996,9 @@ function Donut({ segments, total }) {
   const size = 168, r = 58, sw = 16, C = 2 * Math.PI * r;
   const gap = 5;
   let cum = 0;
+  // binnendiameter van de ring ≈ 2*(r - sw/2) = 100px; schaal het bedrag mee zodat het binnen de cirkel blijft
+  const totalStr = window.fmtEur(total);
+  const amtSize = Math.min(24, Math.floor(92 / (totalStr.length * 0.6)));
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} viewBox="0 0 168 168" style={{ transform: 'rotate(-90deg)' }}>
@@ -1012,9 +1015,9 @@ function Donut({ segments, total }) {
           );
         })}
       </svg>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxWidth: 100, margin: '0 auto' }}>
         <span style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--faint)' }}>Totaal</span>
-        <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--ink)', letterSpacing: -0.6, marginTop: 1 }}>{window.fmtEur(total)}</span>
+        <span style={{ fontSize: amtSize, fontWeight: 700, color: 'var(--ink)', letterSpacing: -0.6, marginTop: 1, whiteSpace: 'nowrap' }}>{totalStr}</span>
       </div>
     </div>
   );
@@ -1104,7 +1107,7 @@ function AnalyseScreen({ onTab }) {
             {stat('Flessen', totaal)}{sep}{stat('Waarde', window.fmtEur(waarde))}{sep}{stat('Soorten', soort.length)}
           </div>
 
-          <ChartCard title="Waardeverdeling per soort" sub="Aandeel in totale kelderwaarde">
+          <ChartCard title="Waardeverdeling per soort" sub="Aandeel in totale waarde">
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
               <Donut segments={donutSegs} total={donutSegs.reduce((a, s) => a + s.value, 0)} />
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1265,7 +1268,7 @@ function Splash() {
     <div className="login-stage">
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, color: 'var(--muted)' }}>
         <span className="add-spin" style={{ width: 26, height: 26, borderRadius: 999, border: '2.5px solid var(--brand-pale)', borderTopColor: 'var(--brand)', display: 'inline-block' }} />
-        <span style={{ fontSize: 14, fontWeight: 500 }}>Wijnkelder laden…</span>
+        <span style={{ fontSize: 14, fontWeight: 500 }}>Wijnoverzicht laden…</span>
       </div>
     </div>
   );
@@ -1277,7 +1280,7 @@ function BrandMark() {
       <div style={{ width: 56, height: 56, borderRadius: 18, background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow)' }}>
         <window.IcGrape size={30} />
       </div>
-      <div style={{ fontSize: 22, fontWeight: 680, letterSpacing: -0.4, color: 'var(--ink)' }}>Wijnkelder</div>
+      <div style={{ fontSize: 22, fontWeight: 680, letterSpacing: -0.4, color: 'var(--ink)' }}>Wijnoverzicht</div>
     </div>
   );
 }
