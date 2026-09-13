@@ -1779,7 +1779,7 @@ function bindEvents() {
   document.querySelectorAll('[data-delete-user]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const username = btn.dataset.deleteUser;
-      if (!confirm(`Gebruiker "${username}" verwijderen?`)) return;
+      if (!confirm(`Gebruiker "${username}" verwijderen?\n\nDit verwijdert ook permanent alle wijnen en wijnkasten van deze gebruiker (indien aanwezig). Lezers die deze kelder deelden krijgen weer hun eigen, lege kelder.`)) return;
       const r = await fetch(`/api/auth?username=${encodeURIComponent(username)}`, { method: 'DELETE' });
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
