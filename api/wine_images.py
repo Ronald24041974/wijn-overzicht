@@ -1,8 +1,8 @@
-import sys, os, re, json
+import sys, os, re, json, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.auth import check_auth
 from lib.helpers import BaseHandler, vivino_search_html, download_image, get_anthropic_client, sanitize_filename
-from lib.db import get_db
+from lib.db import get_db, ensure_wines_columns
 from lib.image import remove_background, has_transparency, normalize_transparent
 from urllib.parse import urlparse, parse_qs, quote
 
@@ -56,9 +56,13 @@ def _find_online_and_store_proposed(wine_id: str, name: str, wine_type: str, yea
                 continue
             try:
                 processed = remove_background(img_bytes) if not has_transparency(img_bytes) else normalize_transparent(img_bytes)
+                ensure_wines_columns()
                 with get_db() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("UPDATE wines SET proposed_data=%s WHERE id=%s", (processed, wine_id))
+                        cur.execute(
+                            "UPDATE wines SET proposed_data=%s, proposed_at=%s WHERE id=%s",
+                            (processed, int(time.time()), wine_id)
+                        )
                     conn.commit()
                 return True
             except Exception:

@@ -31,7 +31,7 @@ class handler(BaseHandler):
                     now = int(time.time())
                     with conn.cursor() as cur:
                         cur.execute(
-                            "UPDATE wines SET image_data=%s, thumb_data=%s, proposed_data=NULL, updatedat=%s WHERE id=%s",
+                            "UPDATE wines SET image_data=%s, thumb_data=%s, proposed_data=NULL, proposed_at=0, updatedat=%s WHERE id=%s",
                             (proposed, thumb, now, wine_id)
                         )
                     conn.commit()
@@ -39,7 +39,7 @@ class handler(BaseHandler):
             elif action == "discard":
                 with get_db() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("UPDATE wines SET proposed_data=NULL WHERE id=%s", (wine_id,))
+                        cur.execute("UPDATE wines SET proposed_data=NULL, proposed_at=0 WHERE id=%s", (wine_id,))
                     conn.commit()
                 self.json_response(200, {"ok": True})
             else:

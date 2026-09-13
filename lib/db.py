@@ -109,6 +109,14 @@ def get_db():
     return conn
 
 
+def ensure_wines_columns():
+    """Idempotente kolom-toevoeging, los van ensure_schema() (die niet in productie draait)."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS proposed_at BIGINT DEFAULT 0")
+        conn.commit()
+
+
 def ensure_schema():
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -139,7 +147,8 @@ def ensure_schema():
                     updatedat       BIGINT DEFAULT 0,
                     image_data      BYTEA,
                     thumb_data      BYTEA,
-                    proposed_data   BYTEA
+                    proposed_data   BYTEA,
+                    proposed_at     BIGINT DEFAULT 0
                 )
             """)
         conn.commit()
