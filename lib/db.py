@@ -59,9 +59,20 @@ def create_user(username: str, password_hash: str, role: str, owner_id: int = No
 
 
 def delete_user(username: str):
+    """Verwijdert de gebruiker mét zijn/haar wijnen en kasten (owner_id-koppeling).
+    Lezers die deze kelder deelden (users.owner_id) vallen terug op hun eigen,
+    lege kelder i.p.v. mee te crashen op de foreign key."""
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM users WHERE username=%s", (username,))
+            cur.execute("SELECT id FROM users WHERE username=%s", (username,))
+            row = cur.fetchone()
+            if not row:
+                return
+            uid = row["id"]
+            cur.execute("UPDATE users SET owner_id=NULL WHERE owner_id=%s", (uid,))
+            cur.execute("DELETE FROM wines WHERE owner_id=%s", (uid,))
+            cur.execute("DELETE FROM cabinets WHERE owner_id=%s", (uid,))
+            cur.execute("DELETE FROM users WHERE id=%s", (uid,))
         conn.commit()
 
 
