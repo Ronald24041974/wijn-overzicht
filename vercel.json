@@ -13,8 +13,8 @@
     }
   ],
   "rewrites": [
-    { "source": "/api/wine-thumb",       "destination": "/api/wine_thumb" },
-    { "source": "/api/wine-image",       "destination": "/api/wine_image" },
+    { "source": "/api/wine-thumb",       "destination": "/api/wine_photo?variant=thumb" },
+    { "source": "/api/wine-image",       "destination": "/api/wine_photo?variant=full" },
     { "source": "/api/wine-images",      "destination": "/api/wine_images" },
     { "source": "/api/proposed-image",   "destination": "/api/proposed_image" },
     { "source": "/api/fetch-suckling",   "destination": "/api/fetch_suckling" },

@@ -36,10 +36,14 @@ let cabinetsOpen  = false;
 let currentUser   = { username: '', role: 'admin', totpEnabled: false };
 let usersPanel    = { open: false, users: [], status: '', error: '', pwError: '', pwOk: false };
 let twoFASetup    = { active: false, secret: '', uri: '', status: '', error: '' };
+let cabinetList   = [];   // door de gebruiker ingestelde wijnkasten, uit /api/cabinets
+let viewOwnerId   = null; // superadmin: id van de kelder die (read-only) bekeken wordt
 
 const root = document.querySelector('#root');
 
-function isAdmin() { return currentUser.role === 'admin'; }
+function isAdmin() { return (currentUser.role === 'admin' || currentUser.role === 'superadmin') && !viewOwnerId; }
+function isSuperAdmin() { return currentUser.role === 'superadmin'; }
+function ownerQS() { return viewOwnerId ? `?owner=${encodeURIComponent(viewOwnerId)}` : ''; }
 
 
 /* ================================================
@@ -93,7 +97,7 @@ function hydrateWine(w) {
 
 async function loadWines() {
   try {
-    const r = await fetch('/api/wines');
+    const r = await fetch('/api/wines' + ownerQS());
     if (!r.ok) throw new Error('API niet beschikbaar');
     const data = await r.json();
     wines = data.wines.filter(w => w.name).map(hydrateWine);
@@ -104,6 +108,100 @@ async function loadWines() {
   }
   selectedId = selectedId ?? wines[0]?.id ?? null;
   render();
+}
+
+async function loadCabinets() {
+  try {
+    const r = await fetch('/api/cabinets' + ownerQS());
+    const data = await r.json().catch(() => ({}));
+    cabinetList = (r.ok && data.cabinets) ? data.cabinets : [];
+  } catch {
+    cabinetList = [];
+  }
+  CABINETS = ['Niet ingedeeld', ...cabinetList.map(c => c.name)];
+  return cabinetList;
+}
+
+async function createCabinets(names) {
+  const r = await fetch('/api/cabinets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ names }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.message || 'Aanmaken mislukt');
+  cabinetList = data.cabinets || [];
+  CABINETS = ['Niet ingedeeld', ...cabinetList.map(c => c.name)];
+  return cabinetList;
+}
+
+async function switchOwner(ownerId) {
+  viewOwnerId = ownerId || null;
+  await loadWines();
+  await loadCabinets();
+  render();
+}
+
+// ── Onboarding: nieuwe gebruiker kiest zelf zijn wijnkasten ──────────────────
+function renderCabinetSetupScreen() {
+  root.innerHTML = `
+    <div class="login-wrap">
+      ${_loginLogoTop()}
+      <div class="login-card">
+        <h1 class="login-heading">Wijnkasten instellen</h1>
+        <p class="login-sub">Geef je wijnkasten een naam. Je kunt er later altijd bij maken.</p>
+        <form id="cabinet-setup-form">
+          <div id="cabinet-setup-rows">
+            <div class="lf-group"><input type="text" class="cabinet-name-input" placeholder="Kast 1 (bijv. Kelder)" autofocus /></div>
+          </div>
+          <button type="button" id="cabinet-setup-add-row" class="ghost-button" style="margin:6px 0 14px">+ Nog een kast toevoegen</button>
+          <div id="cabinet-setup-error" class="lf-error-box" style="display:none"></div>
+          <button type="submit" id="cabinet-setup-submit" class="save-button" style="width:100%">Kasten opslaan</button>
+        </form>
+      </div>
+    </div>
+  `;
+  document.querySelector('#cabinet-setup-add-row').addEventListener('click', () => {
+    const rows = document.querySelector('#cabinet-setup-rows');
+    const n = rows.children.length + 1;
+    const div = document.createElement('div');
+    div.className = 'lf-group';
+    div.innerHTML = `<input type="text" class="cabinet-name-input" placeholder="Kast ${n}" />`;
+    rows.appendChild(div);
+  });
+  document.querySelector('#cabinet-setup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const names = Array.from(document.querySelectorAll('.cabinet-name-input'))
+      .map(i => i.value.trim()).filter(Boolean);
+    const errBox = document.querySelector('#cabinet-setup-error');
+    if (!names.length) {
+      errBox.textContent = 'Voer minimaal 1 wijnkast in.';
+      errBox.style.display = 'block';
+      return;
+    }
+    const btn = document.querySelector('#cabinet-setup-submit');
+    btn.disabled = true; btn.textContent = 'Bezig…';
+    try {
+      await createCabinets(names);
+      render();
+      loadWines();
+    } catch (err) {
+      errBox.textContent = err.message || 'Opslaan mislukt.';
+      errBox.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Kasten opslaan';
+    }
+  });
+}
+
+async function afterAuth() {
+  localStorage.setItem('wijn_session', '1');
+  await loadCabinets();
+  if (!isSuperAdmin() && cabinetList.length === 0) {
+    renderCabinetSetupScreen();
+    return;
+  }
+  render();
+  loadWines();
 }
 
 async function saveWine(patch) {
@@ -183,7 +281,7 @@ const SORT_OPTIONS = [
   ['year-asc',      'Jaar oud→nieuw'],
   ['name',          'Naam A→Z'],
 ];
-const CABINETS = ['Niet ingedeeld', 'Wijnkast 1', 'Wijnkast 2', 'Wijnkast 3'];
+let CABINETS = ['Niet ingedeeld'];
 
 function uniqueOpts(key) {
   return ['Alle', ...new Set(wines.map(w => w[key]).filter(Boolean).sort((a, b) => String(a).localeCompare(String(b), 'nl')))];
@@ -350,7 +448,7 @@ function renderDesktop(visible, selected, summary) {
           ${kpiCard('Flessen',     number(summary.bottles))}
           ${kpiCard('Totale waarde', euro(summary.value))}
           ${kpiCard('Gem. prijs',  euro(summary.avgPrice))}
-          ${kpiCard('Wijnkasten',  `${number(summary.cabinets)} / 3`)}
+          ${kpiCard('Wijnkasten',  `${number(summary.cabinets)} / ${CABINETS.length - 1}`)}
         </section>
 
         ${addOpen  ? addPanel()  : ''}
@@ -384,7 +482,7 @@ function renderMobile(visible, selected, summary) {
   return `
     ${addOpen        ? mobileOverlay('Nieuwe fles toevoegen', 'close-add',  addPanel())            : ''}
     ${scanOpen       ? mobileOverlay('Fotoscan',              'close-scan', scanPanel(), true)      : ''}
-    ${usersPanel.open ? mobileOverlay(isAdmin() ? 'Gebruikers' : 'Mijn account', 'close-users', renderUsersPanel()) : ''}
+    ${usersPanel.open ? mobileOverlay(isSuperAdmin() ? 'Gebruikers' : 'Mijn account', 'close-users', renderUsersPanel()) : ''}
 
     <div class="mobile-shell">
       ${mobileHeader()}
@@ -410,7 +508,7 @@ function mobileHeader() {
       </button>
       <div class="mobile-header-actions">
         ${isAdmin() ? `<button class="mobile-fab" id="open-add" title="Nieuwe fles toevoegen">+</button>` : ''}
-        <button class="header-icon-btn" id="open-users" title="${isAdmin() ? 'Gebruikers beheren' : 'Mijn account'}">${iconUsers()}</button>
+        <button class="header-icon-btn" id="open-users" title="${isSuperAdmin() ? 'Gebruikers beheren' : 'Mijn account'}">${iconUsers()}</button>
         <button class="header-icon-btn" id="logout-btn" title="Uitloggen">${iconLogout()}</button>
       </div>
     </header>
@@ -524,7 +622,7 @@ function mobAnalyticsView(summary) {
         ${kpiCard('Flessen',      number(summary.bottles))}
         ${kpiCard('Totale waarde', euro(summary.value))}
         ${kpiCard('Gem. prijs',   euro(summary.avgPrice))}
-        ${kpiCard('Wijnkasten',   `${number(summary.cabinets)} / 3`)}
+        ${kpiCard('Wijnkasten',   `${number(summary.cabinets)} / ${CABINETS.length - 1}`)}
       </div>
 
       <h2>Voorraad & waarde</h2>
@@ -761,10 +859,10 @@ function editorPanel(wine) {
 }
 
 function cabinetsPanel() {
-  const cabinetOrder = ['Wijnkast 1', 'Wijnkast 2', 'Wijnkast 3', 'Niet ingedeeld'];
-  const groups = cabinetOrder
-    .map(name => ({ name, wines: wines.filter(w => (w.cabinet || 'Niet ingedeeld') === name) }))
-    .filter(g => g.wines.length > 0);
+  const named = CABINETS.filter(c => c !== 'Niet ingedeeld');
+  const groups = named.map(name => ({ name, wines: wines.filter(w => (w.cabinet || 'Niet ingedeeld') === name) }));
+  const overig = wines.filter(w => !named.includes(w.cabinet || 'Niet ingedeeld'));
+  if (overig.length) groups.push({ name: 'Niet ingedeeld', wines: overig });
 
   return `
     <section class="cabinets-panel">
@@ -1665,9 +1763,9 @@ function bindEvents() {
 
   /* Gebruikersbeheer */
   document.querySelector('#open-users')?.addEventListener('click', async () => {
-    usersPanel = { open: true, users: [], status: isAdmin() ? 'loading' : '', error: '' };
+    usersPanel = { open: true, users: [], status: isSuperAdmin() ? 'loading' : '', error: '' };
     render();
-    if (isAdmin()) {
+    if (isSuperAdmin()) {
       const r = await fetch('/api/auth?action=users');
       const data = await r.json().catch(() => ({}));
       usersPanel = { open: true, users: data.users || [], status: '', error: r.ok ? '' : (data.message || 'Laden mislukt.') };
@@ -1691,6 +1789,15 @@ function bindEvents() {
       }
       render();
     });
+  });
+  document.querySelectorAll('[data-view-owner]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      usersPanel = { open: false, users: [], status: '', error: '', pwError: '', pwOk: false };
+      await switchOwner(Number(btn.dataset.viewOwner));
+    });
+  });
+  document.querySelector('#back-to-own-cellar')?.addEventListener('click', async () => {
+    await switchOwner(null);
   });
   /* 2FA instellen */
   document.querySelector('#setup-2fa-btn')?.addEventListener('click', async () => {
@@ -1728,7 +1835,7 @@ function bindEvents() {
     if (r.ok) {
       twoFASetup = { active: false, secret: '', uri: '', status: '', error: '' };
       currentUser = { ...currentUser, totpEnabled: true };
-      if (isAdmin()) {
+      if (isSuperAdmin()) {
         const ur = await fetch('/api/auth?action=users');
         const ud = await ur.json().catch(() => ({}));
         usersPanel = { ...usersPanel, users: ud.users || usersPanel.users };
@@ -1747,7 +1854,7 @@ function bindEvents() {
     });
     if (r.ok) {
       currentUser = { ...currentUser, totpEnabled: false };
-      if (isAdmin()) {
+      if (isSuperAdmin()) {
         const ur = await fetch('/api/auth?action=users');
         const ud = await ur.json().catch(() => ({}));
         usersPanel = { ...usersPanel, users: ud.users || usersPanel.users };
@@ -2022,7 +2129,7 @@ function _formatTotpSecret(s) {
 
 function renderUsersPanel() {
   const { users, status, error } = usersPanel;
-  const roleLabel = r => r === 'admin' ? 'Beheerder' : 'Lezer';
+  const roleLabel = r => r === 'superadmin' ? 'Superadmin' : r === 'admin' ? 'Beheerder' : 'Lezer';
   const isSelf = u => u.username === currentUser.username;
   const myTotpOn = currentUser.totpEnabled;
 
@@ -2030,16 +2137,24 @@ function renderUsersPanel() {
     <div class="users-panel">
       ${error ? `<p class="users-error">${esc(error)}</p>` : ''}
 
-      ${isAdmin() ? `
+      ${viewOwnerId ? `
+        <div class="viewing-owner-banner" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--amber-bg,#fbeedb);border-radius:10px;margin-bottom:12px">
+          <span style="flex:1;font-size:.85rem;font-weight:600">Je bekijkt nu een andere kelder (alleen-lezen)</span>
+          <button type="button" id="back-to-own-cellar" class="save-button" style="padding:6px 12px;font-size:.8rem">Terug naar eigen kelder</button>
+        </div>
+      ` : ''}
+
+      ${isSuperAdmin() ? `
       <ul class="users-list">
         ${users.map(u => `
           <li class="user-row">
             <span class="user-name">${esc(u.username)}</span>
             <div class="user-badges">
-              <span class="user-role-badge ${u.role === 'admin' ? 'role-admin' : 'role-readonly'}">${roleLabel(u.role)}</span>
+              <span class="user-role-badge ${u.role === 'admin' || u.role === 'superadmin' ? 'role-admin' : 'role-readonly'}">${roleLabel(u.role)}</span>
               ${u.totpEnabled ? `<span class="user-role-badge role-totp" title="2FA ingeschakeld">${icon2FA()} 2FA</span>` : ''}
             </div>
             ${!isSelf(u) ? `
+              <button class="icon-btn" data-view-owner="${u.id}" title="Bekijk kelder (alleen-lezen)">${iconUsers()}</button>
               <button class="icon-btn danger-icon" data-delete-user="${esc(u.username)}" title="Verwijderen">${iconTrash()}</button>
             ` : '<span class="user-self-tag">jij</span>'}
           </li>
@@ -2107,7 +2222,7 @@ function renderUsersPanel() {
         </div>
       `}
 
-      ${isAdmin() ? `
+      ${isSuperAdmin() ? `
       <div class="users-divider"></div>
 
       <!-- Gebruiker toevoegen -->
@@ -2220,8 +2335,7 @@ function _bindLoginForm(setupMode) {
     }
     if (r.ok) {
       currentUser = { username: data.username || username, role: data.role || 'admin', totpEnabled: data.totpEnabled || false };
-      localStorage.setItem('wijn_session', '1');
-      render(); loadWines();
+      await afterAuth();
     } else {
       showLoginScreen(data.message || 'Inloggen mislukt.', setupMode);
     }
@@ -2268,8 +2382,7 @@ function showTwoFactorScreen(challengeToken, errorMsg = '') {
     const data = await r.json().catch(() => ({}));
     if (r.ok) {
       currentUser = { username: data.username || '', role: data.role || 'readonly', totpEnabled: data.totpEnabled || false };
-      localStorage.setItem('wijn_session', '1');
-      render(); loadWines();
+      await afterAuth();
     } else {
       showTwoFactorScreen(challengeToken, data.message || 'Onjuiste code.');
     }
@@ -2306,6 +2419,5 @@ async function logout() {
     showLoginScreen('Geen verbinding met de server.');
     return;
   }
-  render();
-  loadWines();
+  await afterAuth();
 })();

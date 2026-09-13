@@ -3,14 +3,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.helpers import BaseHandler
 from lib.auth import (
     hash_password, verify_password, make_token, verify_token,
-    get_token_from_request, check_auth, require_admin,
+    get_token_from_request, check_auth, require_admin, require_superadmin,
     set_auth_cookie, clear_auth_cookie,
     generate_totp_secret, get_totp_uri, verify_totp,
     make_challenge_token, verify_challenge_token,
 )
 from lib.db import (
     ensure_users_schema, get_user, list_users, create_user,
-    delete_user, update_password, count_users, count_admins,
+    delete_user, update_password, count_users, count_admins, count_superadmins,
     get_totp_secret, set_totp_secret,
 )
 from urllib.parse import urlparse, parse_qs
@@ -51,7 +51,7 @@ class handler(BaseHandler):
             return
 
         if action == "users":
-            auth = require_admin(self)
+            auth = require_superadmin(self)
             if not auth:
                 return
             ensure_users_schema()
@@ -91,7 +91,7 @@ class handler(BaseHandler):
             self.wfile.write(body)
             return
 
-        # ── Eerste admin aanmaken ──────────────────────────────────────────────
+        # ── Eerste account aanmaken (wordt superadmin) ────────────────────────
         if action == "setup":
             ensure_users_schema()
             if count_users() > 0:
@@ -111,8 +111,8 @@ class handler(BaseHandler):
                 self.json_response(400, {"message": "Wachtwoord te kort (minimaal 8 tekens)."})
                 return
             pw_hash = hash_password(password)
-            create_user(username, pw_hash, "admin")
-            _send_authed(self, username, "admin")
+            create_user(username, pw_hash, "superadmin")
+            _send_authed(self, username, "superadmin")
             return
 
         # ── 2FA verificatie na wachtwoord-check ───────────────────────────────
@@ -184,7 +184,7 @@ class handler(BaseHandler):
                 target = (data.get("username") or current_username).strip()
             except Exception:
                 target = current_username
-            if target != current_username and current_role != "admin":
+            if target != current_username and current_role != "superadmin":
                 self.json_response(403, {"message": "Geen toegang."})
                 return
             ensure_users_schema()
@@ -192,9 +192,9 @@ class handler(BaseHandler):
             self.json_response(200, {"ok": True})
             return
 
-        # ── Gebruiker toevoegen (admin) ────────────────────────────────────────
+        # ── Gebruiker toevoegen (alleen superadmin) ───────────────────────────
         if action == "add-user":
-            auth = require_admin(self)
+            auth = require_superadmin(self)
             if not auth:
                 return
             ensure_users_schema()
@@ -234,7 +234,7 @@ class handler(BaseHandler):
             except Exception:
                 self.json_response(400, {"message": "Ongeldige request."})
                 return
-            if target != current_username and current_role != "admin":
+            if target != current_username and current_role != "superadmin":
                 self.json_response(403, {"message": "Geen toegang."})
                 return
             if len(new_pw) < 8:
@@ -279,7 +279,7 @@ class handler(BaseHandler):
             self.json_response(500, {"message": "Serverfout: " + traceback.format_exc()})
 
     def _do_DELETE(self):
-        auth = require_admin(self)
+        auth = require_superadmin(self)
         if not auth:
             return
         current_username = auth[0]
@@ -299,6 +299,9 @@ class handler(BaseHandler):
             return
         if user_row["role"] == "admin" and count_admins() <= 1:
             self.json_response(400, {"message": "Kan de laatste beheerder niet verwijderen."})
+            return
+        if user_row["role"] == "superadmin" and count_superadmins() <= 1:
+            self.json_response(400, {"message": "Kan de laatste superadmin niet verwijderen."})
             return
         delete_user(username)
         self.json_response(200, {"ok": True, "users": list_users()})

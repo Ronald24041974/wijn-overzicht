@@ -2,7 +2,7 @@ import sys, os, re, json, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.auth import check_auth
 from lib.helpers import BaseHandler, vivino_search_html, download_image, get_anthropic_client, sanitize_filename
-from lib.db import get_db, ensure_wines_columns
+from lib.db import get_db, ensure_wines_columns, resolve_owner_id, get_wine_owner
 from lib.image import remove_background, has_transparency, normalize_transparent
 from urllib.parse import urlparse, parse_qs, quote
 
@@ -74,7 +74,9 @@ def _find_online_and_store_proposed(wine_id: str, name: str, wine_type: str, yea
 
 class handler(BaseHandler):
     def do_GET(self):
-        if not check_auth(self): return
+        auth = check_auth(self)
+        if not auth: return
+        username, role = auth
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         wine_id = (params.get("id", [""])[0]).strip()
@@ -83,6 +85,11 @@ class handler(BaseHandler):
         year = (params.get("year", [""])[0]).strip()
         if not name or not wine_id:
             self.send_error(400)
+            return
+        owner = get_wine_owner(wine_id)
+        own_id = resolve_owner_id(username, role)
+        if owner is None or owner != own_id:
+            self.send_error(404)
             return
         type_hint = _TYPE_HINTS.get(wine_type, "")
         query = f"{name} {type_hint}".strip() if type_hint else name

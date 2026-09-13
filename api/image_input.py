@@ -2,14 +2,16 @@ import sys, os, base64, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.auth import require_admin
 from lib.helpers import BaseHandler, download_image
-from lib.db import get_db
+from lib.db import get_db, resolve_owner_id, get_wine_owner
 from lib.image import remove_background, has_transparency, normalize_transparent, make_thumbnail
 from urllib.parse import urlparse, parse_qs
 
 
 class handler(BaseHandler):
     def do_POST(self):
-        if not require_admin(self): return
+        auth = require_admin(self)
+        if not auth: return
+        username, role = auth
         parsed = urlparse(self.path)
         mode = parse_qs(parsed.query).get("mode", [""])[0]
         try:
@@ -17,6 +19,11 @@ class handler(BaseHandler):
             wine_id = str(data.get("id") or "").strip()
             if not wine_id:
                 self.json_response(400, {"message": "Wijn-id is vereist."})
+                return
+            owner = get_wine_owner(wine_id)
+            own_id = resolve_owner_id(username, role)
+            if owner is None or owner != own_id:
+                self.json_response(404, {"message": "Wijn niet gevonden."})
                 return
             if mode == "url":
                 image_url = (data.get("imageUrl") or "").strip()
