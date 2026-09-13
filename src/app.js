@@ -2147,9 +2147,9 @@ function renderUsersPanel() {
       ${error ? `<p class="users-error">${esc(error)}</p>` : ''}
 
       ${viewOwnerId ? `
-        <div class="viewing-owner-banner" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--amber-bg,#fbeedb);border-radius:10px;margin-bottom:12px">
-          <span style="flex:1;font-size:.85rem;font-weight:600">Je bekijkt nu een andere kelder (alleen-lezen)</span>
-          <button type="button" id="back-to-own-cellar" class="save-button" style="padding:6px 12px;font-size:.8rem">Terug naar eigen kelder</button>
+        <div class="viewing-owner-banner">
+          <span>Je bekijkt nu een andere kelder (alleen-lezen)</span>
+          <button type="button" id="back-to-own-cellar">Terug naar eigen kelder</button>
         </div>
       ` : ''}
 
@@ -2258,7 +2258,7 @@ function renderUsersPanel() {
             <span>Beheerder</span>
           </label>
         </div>
-        <label class="form-field" id="share-own-kelder-row" style="flex-direction:row;align-items:center;gap:8px;margin-top:8px">
+        <label class="share-own-kelder-row" id="share-own-kelder-row">
           <input type="checkbox" name="shareOwnKelder" id="share-own-kelder" />
           <span>Deel mijn eigen kelder met deze lezer (alleen-lezen, geen eigen lege kelder)</span>
         </label>
