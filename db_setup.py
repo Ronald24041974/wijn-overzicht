@@ -66,9 +66,11 @@ def create_schema(conn):
                 updatedat       BIGINT DEFAULT 0,
                 image_data      BYTEA,
                 thumb_data      BYTEA,
-                proposed_data   BYTEA
+                proposed_data   BYTEA,
+                proposed_at     BIGINT DEFAULT 0
             )
         """)
+        cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS proposed_at BIGINT DEFAULT 0")
     conn.commit()
     print("Schema aangemaakt (of al aanwezig).")
 

@@ -1,0 +1,34 @@
+name: Database opschonen
+
+on:
+  schedule:
+    # Elke maandag ~03:17 UTC (bewust niet op het hele of halve uur)
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Alleen rapporteren, niets verwijderen'
+        type: boolean
+        default: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install psycopg2-binary
+
+      - name: Verweesde afbeeldingsvoorstellen opruimen
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python scripts/cleanup_stale_images.py --max-age-days 7 --dry-run
+          else
+            python scripts/cleanup_stale_images.py --max-age-days 7
+          fi

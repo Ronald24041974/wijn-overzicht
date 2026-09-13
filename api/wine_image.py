@@ -41,7 +41,7 @@ class handler(BaseHandler):
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE wines SET image_data=NULL, thumb_data=NULL, proposed_data=NULL WHERE id=%s",
+                    "UPDATE wines SET image_data=NULL, thumb_data=NULL, proposed_data=NULL, proposed_at=0 WHERE id=%s",
                     (wine_id,)
                 )
             conn.commit()
