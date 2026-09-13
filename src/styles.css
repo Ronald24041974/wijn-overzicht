@@ -2246,7 +2246,7 @@ h1, h2, h3, p { margin: 0; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.user-badges { display: flex; gap: 4px; align-items: center; }
+.user-badges { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 .user-role-badge {
   font-size: 0.72rem;
   font-weight: 600;
@@ -2262,6 +2262,43 @@ h1, h2, h3, p { margin: 0; }
 .user-self-tag { font-size: 0.72rem; color: var(--c-subtle); font-style: italic; }
 .danger-icon   { color: var(--c-red); }
 .users-divider { height: 1px; background: var(--c-border); margin: 4px 0; }
+.viewing-owner-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(242,195,107,.18);
+  border-radius: var(--r-sm);
+}
+.viewing-owner-banner span {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--c-gold-dark);
+}
+.viewing-owner-banner button {
+  flex-shrink: 0;
+  background: var(--c-brand);
+  color: #fff;
+  border: 0;
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.viewing-owner-banner button:hover { opacity: .82; }
+.share-own-kelder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--c-text);
+  cursor: pointer;
+}
 .add-user-form { display: flex; flex-direction: column; gap: 10px; }
 .role-toggle-row { display: flex; gap: 16px; }
 .role-option {

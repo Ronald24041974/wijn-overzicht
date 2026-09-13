@@ -21,6 +21,7 @@ def ensure_users_schema():
             """)
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at BIGINT DEFAULT 0")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_id INTEGER REFERENCES users(id)")
         conn.commit()
 
 
@@ -28,7 +29,7 @@ def get_user(username: str):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, username, password_hash, role FROM users WHERE username=%s",
+                "SELECT id, username, password_hash, role, owner_id FROM users WHERE username=%s",
                 (username,)
             )
             return cur.fetchone()
@@ -37,22 +38,22 @@ def get_user(username: str):
 def list_users():
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, username, role, totp_secret FROM users ORDER BY id")
+            cur.execute("SELECT id, username, role, totp_secret, owner_id FROM users ORDER BY id")
             rows = cur.fetchall()
     return [
         {"id": r["id"], "username": r["username"], "role": r["role"],
-         "totpEnabled": bool(r.get("totp_secret"))}
+         "totpEnabled": bool(r.get("totp_secret")), "sharesOwnerId": r.get("owner_id")}
         for r in rows
     ]
 
 
-def create_user(username: str, password_hash: str, role: str):
+def create_user(username: str, password_hash: str, role: str, owner_id: int = None):
     now = int(time.time())
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO users (username, password_hash, role, created_at) VALUES (%s, %s, %s, %s)",
-                (username, password_hash, role, now)
+                "INSERT INTO users (username, password_hash, role, created_at, owner_id) VALUES (%s, %s, %s, %s, %s)",
+                (username, password_hash, role, now, owner_id)
             )
         conn.commit()
 
@@ -78,13 +79,6 @@ def count_users() -> int:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) AS c FROM users")
-            return cur.fetchone()["c"]
-
-
-def count_admins() -> int:
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) AS c FROM users WHERE role='admin'")
             return cur.fetchone()["c"]
 
 
@@ -119,7 +113,9 @@ def get_wine_owner(wine_id) -> int | None:
 
 
 def resolve_owner_id(username: str, role: str, requested_owner=None) -> int:
-    """Eigen user-id, tenzij superadmin een andere owner opvraagt (alleen voor leesdoeleinden)."""
+    """Eigen user-id, tenzij:
+    - superadmin een andere owner opvraagt (alleen voor leesdoeleinden), of
+    - de gebruiker een 'lezer' is die gekoppeld is aan iemand anders' kelder (owner_id op users)."""
     user = get_user(username)
     own_id = user["id"] if user else None
     if role == "superadmin" and requested_owner not in (None, ""):
@@ -127,6 +123,8 @@ def resolve_owner_id(username: str, role: str, requested_owner=None) -> int:
             return int(requested_owner)
         except (TypeError, ValueError):
             return own_id
+    if role == "readonly" and user and user.get("owner_id"):
+        return user["owner_id"]
     return own_id
 
 
