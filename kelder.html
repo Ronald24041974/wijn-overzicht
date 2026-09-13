@@ -139,11 +139,40 @@ async function fetchJSON(url, opts) {
   return { ok: res.ok, status: res.status, data: data || {} };
 }
 
+function ownerQS() {
+  return window.VIEW_OWNER ? ('?owner=' + encodeURIComponent(window.VIEW_OWNER)) : '';
+}
+
 async function loadWines() {
-  const r = await fetchJSON('/api/wines');
+  const r = await fetchJSON('/api/wines' + ownerQS());
   if (!r.ok) { const e = new Error(r.data.message || 'Laden mislukt'); e.status = r.status; throw e; }
   window.WINES = (r.data.wines || []).map(adaptWine);
   return window.WINES;
+}
+
+window.CABINETS = [];
+async function loadCabinets() {
+  const r = await fetchJSON('/api/cabinets' + ownerQS());
+  window.CABINETS = (r.ok && r.data.cabinets) ? r.data.cabinets : [];
+  return window.CABINETS;
+}
+async function createCabinets(names) {
+  const r = await fetchJSON('/api/cabinets', { method: 'POST', body: JSON.stringify({ names }) });
+  if (!r.ok) throw new Error(r.data.message || 'Aanmaken mislukt');
+  window.CABINETS = r.data.cabinets || [];
+  return window.CABINETS;
+}
+function cabinetOrder() {
+  return window.CABINETS.map(c => c.name);
+}
+
+// Superadmin: andermans kelder read-only bekijken (schrijfacties blijven altijd op eigen account)
+async function switchOwner(ownerId) {
+  window.VIEW_OWNER = ownerId || null;
+  window.IS_ADMIN = window.IS_SUPERADMIN && !window.VIEW_OWNER;
+  await window.loadWines();
+  await window.loadCabinets();
+  if (window.__refresh) window.__refresh();
 }
 
 function applyWinesResponse(data) {
@@ -168,7 +197,9 @@ async function deleteWineApi(rowNumber) {
 }
 
 window.IS_ADMIN = false;
-Object.assign(window, { TYPE, SUPPLIERS, fmtEur, adaptWine, loadWines, patchWine, addWineApi, deleteWineApi, fetchJSON });
+window.IS_SUPERADMIN = false;
+window.VIEW_OWNER = null;
+Object.assign(window, { TYPE, SUPPLIERS, fmtEur, adaptWine, loadWines, loadCabinets, createCabinets, cabinetOrder, switchOwner, patchWine, addWineApi, deleteWineApi, fetchJSON });
   </script>
 
   <!-- ───────────────────────── icons ───────────────────────── -->
@@ -809,7 +840,7 @@ function formToPayload(f, rowNumber) {
 
 function AddScreen({ onClose, editWine }) {
   const isEdit = !!editWine;
-  const [f, setF] = useAddState(isEdit ? wineToForm(editWine) : { naam: '', soort: 'Rood', aantal: 1, jaar: '', kast: 'Wijnkast 1', druif: '', land: '', regio: '', vivino: '', mijn: '', prijs: '', notitie: '' });
+  const [f, setF] = useAddState(isEdit ? wineToForm(editWine) : { naam: '', soort: 'Rood', aantal: 1, jaar: '', kast: (window.CABINETS[0] && window.CABINETS[0].name) || '', druif: '', land: '', regio: '', vivino: '', mijn: '', prijs: '', notitie: '' });
   const [saving, setSaving] = useAddState(false);
   const [err, setErr] = useAddState('');
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -880,7 +911,7 @@ function AddScreen({ onClose, editWine }) {
             <AddField key="druif" label="Druifsoort" value={f.druif} onChange={v => set('druif', v)} placeholder="Nebbiolo" />,
             <AddField key="land" label="Land" value={f.land} onChange={v => set('land', v)} placeholder="Italië" />,
             <AddField key="regio" label="Regio" value={f.regio} onChange={v => set('regio', v)} placeholder="Piëmont" />,
-            <AddField key="kast" label="Wijnkast" value={f.kast} onChange={v => set('kast', v)} placeholder="Wijnkast 1" />,
+            <AddField key="kast" label="Wijnkast" value={f.kast} onChange={v => set('kast', v)} placeholder={(window.CABINETS[0] && window.CABINETS[0].name) || 'Kelder'} />,
           ]} />
 
           <AddGroup title="Waardering & prijs" rows={[
@@ -917,7 +948,6 @@ window.AddScreen = AddScreen;
   <!-- ───────────────────────── wijnkasten ───────────────────────── -->
   <script type="text/babel">
 const { useState: useKastState } = React;
-const KAST_ORDER = ['Wijnkast 1', 'Wijnkast 2', 'Wijnkast 3', 'Niet ingedeeld'];
 
 function CabinetCard({ k, wines, onOpen, idx }) {
   const [open, setOpen] = useKastState(idx === 0);
@@ -959,7 +989,11 @@ function CabinetCard({ k, wines, onOpen, idx }) {
 }
 
 function KastenScreen({ onOpen, onTab }) {
-  const groups = KAST_ORDER.map(k => ({ k, wines: window.WINES.filter(w => w.kast === k) })).filter(g => g.wines.length);
+  const names = window.cabinetOrder();
+  const known = new Set(names);
+  const groups = names.map(k => ({ k, wines: window.WINES.filter(w => w.kast === k) }));
+  const overig = window.WINES.filter(w => !known.has(w.kast));
+  if (overig.length) groups.push({ k: 'Niet ingedeeld', wines: overig });
   const totaal = window.WINES.reduce((a, w) => a + w.aantal, 0);
 
   return (
@@ -1077,7 +1111,8 @@ function AnalyseScreen({ onTab }) {
 
   const kastMap = {}, kastValMap = {};
   W.forEach(w => { if (w.aantal) { kastMap[w.kast] = (kastMap[w.kast] || 0) + w.aantal; kastValMap[w.kast] = (kastValMap[w.kast] || 0) + w.aantal * w.prijs; } });
-  const kastCombined = ['Wijnkast 1', 'Wijnkast 2', 'Wijnkast 3', 'Niet ingedeeld'].filter(k => kastMap[k]).map(k => ({ label: k, count: kastMap[k], val: kastValMap[k] }));
+  const kastOrder = [...window.cabinetOrder(), 'Niet ingedeeld'];
+  const kastCombined = kastOrder.filter(k => kastMap[k]).map(k => ({ label: k, count: kastMap[k], val: kastValMap[k] }));
   const maxKastVal = Math.max(1, ...kastCombined.map(k => k.val));
 
   const stat = (label, val) => (
@@ -1163,15 +1198,54 @@ window.AnalyseScreen = AnalyseScreen;
 const { useState: useAcctState } = React;
 
 function RoleBadge({ rol }) {
-  const admin = rol === 'Beheerder';
+  const admin = rol === 'Beheerder' || rol === 'Superadmin';
   return <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, color: admin ? '#fff' : 'var(--muted)', background: admin ? 'var(--brand)' : 'var(--fill)' }}>{rol}</span>;
 }
 function Avatar({ label, size = 34 }) {
   return <div style={{ width: size, height: size, borderRadius: 999, background: 'var(--brand-pale)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.4, fontWeight: 640, flexShrink: 0 }}>{label}</div>;
 }
 
+function SuperadminUserPicker() {
+  const [users, setUsers] = useAcctState([]);
+  const [status, setStatus] = useAcctState('loading');
+  const viewing = window.VIEW_OWNER;
+
+  React.useEffect(() => {
+    (async () => {
+      const r = await window.fetchJSON('/api/auth?action=users');
+      if (r.ok) { setUsers(r.data.users || []); setStatus(''); }
+      else setStatus('error');
+    })();
+  }, []);
+
+  const pick = async (id) => { await window.switchOwner(id); };
+
+  return (
+    <window.LabeledSection label="Superadmin — kelder bekijken">
+      <div className="add-group">
+        {viewing && (
+          <div style={{ ...{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px' }, borderBottom: '0.5px solid var(--sep)', background: 'var(--amber-bg)' }}>
+            <span style={{ flex: 1, fontSize: 13, color: 'var(--amber-ink)', fontWeight: 600 }}>Je bekijkt nu een andere kelder (alleen-lezen)</span>
+            <button onClick={() => pick(null)} className="tap" style={{ border: 'none', background: 'var(--brand)', color: '#fff', borderRadius: 10, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Terug naar eigen kelder</button>
+          </div>
+        )}
+        {status === 'loading' && <div style={{ padding: '11px 16px', fontSize: 13, color: 'var(--muted)' }}>Laden…</div>}
+        {status === 'error' && <div style={{ padding: '11px 16px', fontSize: 13, color: 'var(--red)' }}>Kon gebruikers niet laden.</div>}
+        {users.map(u => (
+          <button key={u.id} onClick={() => pick(u.id)} disabled={viewing === u.id} className="tap"
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', border: 'none', borderTop: '0.5px solid var(--sep)', background: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+            <span style={{ flex: 1, fontSize: 14.5, color: 'var(--ink)', fontWeight: 500 }}>{u.username}</span>
+            <span style={{ fontSize: 12, color: viewing === u.id ? 'var(--brand)' : 'var(--faint)', fontWeight: 600 }}>{viewing === u.id ? 'Actief' : 'Bekijk'}</span>
+          </button>
+        ))}
+      </div>
+    </window.LabeledSection>
+  );
+}
+
 function AccountScreen({ me, onTab }) {
-  const admin = me && me.role === 'admin';
+  const admin = me && (me.role === 'admin' || me.role === 'superadmin');
+  const superadmin = me && me.role === 'superadmin';
   const username = (me && me.username) || '';
   const [pwOpen, setPwOpen] = useAcctState(false);
   const [pw1, setPw1] = useAcctState('');
@@ -1213,10 +1287,12 @@ function AccountScreen({ me, onTab }) {
             <Avatar label={(username[0] || 'J').toUpperCase()} size={44} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 16.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{username}</div>
-              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 1 }}>{admin ? 'Volledig beheer' : 'Alleen lezen'}</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 1 }}>{superadmin ? 'Superadmin — alle kelders' : admin ? 'Volledig beheer' : 'Alleen lezen'}</div>
             </div>
-            <RoleBadge rol={admin ? 'Beheerder' : 'Lezer'} />
+            <RoleBadge rol={superadmin ? 'Superadmin' : admin ? 'Beheerder' : 'Lezer'} />
           </div>
+
+          {superadmin && <SuperadminUserPicker />}
 
           <window.LabeledSection label="Mijn beveiliging">
             <div className="add-group">
@@ -1237,10 +1313,10 @@ function AccountScreen({ me, onTab }) {
             {msg && <div style={{ fontSize: 12.5, color: msg.c, padding: '8px 8px 0', fontWeight: 500 }}>{msg.t}</div>}
           </window.LabeledSection>
 
-          {admin && (
+          {superadmin && (
             <div style={{ fontSize: 12.5, color: 'var(--faint)', padding: '20px 8px 0', lineHeight: 1.5 }}>
-              Gebruikersbeheer (gebruikers toevoegen/verwijderen, 2FA, wijnkasten hernoemen) doe je
-              voorlopig in de klassieke app.
+              Gebruikers toevoegen/verwijderen en 2FA van anderen beheren doe je voorlopig in de
+              klassieke app.
             </div>
           )}
 
@@ -1400,16 +1476,67 @@ function WineApp({ me }) {
   );
 }
 
+function CabinetSetupScreen({ onDone }) {
+  const [names, setNames] = useRootState(['']);
+  const [err, setErr] = useRootState('');
+  const [busy, setBusy] = useRootState(false);
+
+  const setName = (i, v) => setNames(ns => ns.map((n, idx) => idx === i ? v : n));
+  const addRow = () => setNames(ns => (ns.length < 20 ? [...ns, ''] : ns));
+  const removeRow = (i) => setNames(ns => ns.filter((_, idx) => idx !== i));
+
+  const save = async () => {
+    const clean = names.map(n => n.trim()).filter(Boolean);
+    if (!clean.length) { setErr('Voer minimaal 1 wijnkast in.'); return; }
+    setBusy(true); setErr('');
+    try { await window.createCabinets(clean); onDone(); }
+    catch (e) { setErr(e.message || 'Opslaan mislukt.'); setBusy(false); }
+  };
+
+  const inputStyle = { width: '100%', border: 'none', background: 'var(--fill)', borderRadius: 12, outline: 'none', fontSize: 16, color: 'var(--ink)', fontFamily: 'inherit', padding: '13px 14px' };
+
+  return (
+    <div className="login-stage">
+      <div style={{ width: '100%', maxWidth: 360 }}>
+        <BrandMark />
+        <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 22, boxShadow: 'var(--shadow), var(--hair)' }}>
+          <h1 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 660, letterSpacing: -0.3, color: 'var(--ink)' }}>Wijnkasten instellen</h1>
+          <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5 }}>Geef je wijnkasten een naam. Je kunt er later altijd bij maken.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {names.map((n, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8 }}>
+                <input value={n} onChange={e => setName(i, e.target.value)} placeholder={`Kast ${i + 1} (bijv. Kelder)`} autoFocus={i === 0} style={inputStyle} />
+                {names.length > 1 && (
+                  <button type="button" onClick={() => removeRow(i)} className="tap" style={{ border: 'none', background: 'var(--fill)', borderRadius: 12, width: 44, cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+                )}
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addRow} className="tap" style={{ width: '100%', marginTop: 10, padding: '10px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, color: 'var(--brand)' }}>+ Nog een kast toevoegen</button>
+          {err && <div style={{ marginTop: 8, fontSize: 13, color: 'var(--red)', fontWeight: 500 }}>{err}</div>}
+          <button type="button" onClick={save} disabled={busy} className="tap" style={{ width: '100%', marginTop: 16, padding: '14px', borderRadius: 13, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 16, fontWeight: 600, background: 'var(--brand)', color: '#fff' }}>{busy ? 'Bezig…' : 'Kasten opslaan'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RootApp() {
-  const [phase, setPhase] = useRootState('checking'); // checking | login | ready
+  const [phase, setPhase] = useRootState('checking'); // checking | login | onboarding | ready
   const [me, setMe] = useRootState(null);
   const [, force] = useRootState(0);
 
   const becomeReady = async (user) => {
-    window.IS_ADMIN = (user.role === 'admin');
+    window.IS_ADMIN = (user.role === 'admin' || user.role === 'superadmin');
+    window.IS_SUPERADMIN = (user.role === 'superadmin');
+    window.VIEW_OWNER = null;
     setMe(user);
-    try { await window.loadWines(); }
+    try {
+      await window.loadWines();
+      await window.loadCabinets();
+    }
     catch (e) { setPhase('login'); return; }
+    if (user.role !== 'superadmin' && window.CABINETS.length === 0) { setPhase('onboarding'); return; }
     setPhase('ready');
   };
 
@@ -1426,6 +1553,7 @@ function RootApp() {
 
   if (phase === 'checking') return <Splash />;
   if (phase === 'login') return <LoginScreen onAuthed={becomeReady} />;
+  if (phase === 'onboarding') return <CabinetSetupScreen onDone={() => setPhase('ready')} />;
   return <div className="app-shell"><WineApp me={me} /></div>;
 }
 

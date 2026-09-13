@@ -176,12 +176,24 @@ def check_auth(handler):
 
 
 def require_admin(handler):
-    """Returns (username, role) or None. Sends 401 or 403 if not admin."""
+    """Returns (username, role) or None. Sends 401 or 403 als niet admin/superadmin."""
     result = check_auth(handler)
     if result is None:
         return None
     username, role = result
-    if role != "admin":
+    if role not in ("admin", "superadmin"):
         _send_error(handler, 403, "Geen toegang.")
+        return None
+    return result
+
+
+def require_superadmin(handler):
+    """Returns (username, role) or None. Sends 401 of 403 als niet superadmin."""
+    result = check_auth(handler)
+    if result is None:
+        return None
+    username, role = result
+    if role != "superadmin":
+        _send_error(handler, 403, "Alleen voor superadmin.")
         return None
     return result

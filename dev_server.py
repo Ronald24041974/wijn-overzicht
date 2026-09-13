@@ -24,8 +24,8 @@ _load_env()
 os.environ['DEV_MODE'] = '1'
 
 REWRITES = [
-    (r'^/api/wine-thumb$',       '/api/wine_thumb'),
-    (r'^/api/wine-image$',       '/api/wine_image'),
+    (r'^/api/wine-thumb$',       '/api/wine_photo?variant=thumb'),
+    (r'^/api/wine-image$',       '/api/wine_photo?variant=full'),
     (r'^/api/wine-images$',      '/api/wine_images'),
     (r'^/api/proposed-image$',   '/api/proposed_image'),
     (r'^/api/fetch-suckling$',   '/api/fetch_suckling'),

@@ -88,6 +88,13 @@ def count_admins() -> int:
             return cur.fetchone()["c"]
 
 
+def count_superadmins() -> int:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS c FROM users WHERE role='superadmin'")
+            return cur.fetchone()["c"]
+
+
 def get_totp_secret(username: str):
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -103,6 +110,26 @@ def set_totp_secret(username: str, secret):
         conn.commit()
 
 
+def get_wine_owner(wine_id) -> int | None:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT owner_id FROM wines WHERE id=%s", (wine_id,))
+            row = cur.fetchone()
+    return row["owner_id"] if row else None
+
+
+def resolve_owner_id(username: str, role: str, requested_owner=None) -> int:
+    """Eigen user-id, tenzij superadmin een andere owner opvraagt (alleen voor leesdoeleinden)."""
+    user = get_user(username)
+    own_id = user["id"] if user else None
+    if role == "superadmin" and requested_owner not in (None, ""):
+        try:
+            return int(requested_owner)
+        except (TypeError, ValueError):
+            return own_id
+    return own_id
+
+
 def get_db():
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     conn.cursor_factory = psycopg2.extras.RealDictCursor
@@ -114,7 +141,47 @@ def ensure_wines_columns():
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS proposed_at BIGINT DEFAULT 0")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS owner_id INTEGER REFERENCES users(id)")
         conn.commit()
+
+
+def ensure_cabinets_schema():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS cabinets (
+                    id          SERIAL PRIMARY KEY,
+                    owner_id    INTEGER REFERENCES users(id),
+                    name        TEXT NOT NULL,
+                    sort_order  INTEGER DEFAULT 0,
+                    created_at  BIGINT DEFAULT 0
+                )
+            """)
+        conn.commit()
+
+
+def list_cabinets(owner_id: int) -> list:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, sort_order FROM cabinets WHERE owner_id=%s ORDER BY sort_order, id",
+                (owner_id,)
+            )
+            rows = cur.fetchall()
+    return [{"id": r["id"], "name": r["name"]} for r in rows]
+
+
+def create_cabinets(owner_id: int, names: list) -> list:
+    now = int(time.time())
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            for i, name in enumerate(names):
+                cur.execute(
+                    "INSERT INTO cabinets (owner_id, name, sort_order, created_at) VALUES (%s,%s,%s,%s)",
+                    (owner_id, name, i, now)
+                )
+        conn.commit()
+    return list_cabinets(owner_id)
 
 
 def ensure_schema():
@@ -184,7 +251,7 @@ def serialize_wine(row):
     }
 
 
-def load_wines():
+def load_wines(owner_id: int):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -192,7 +259,8 @@ def load_wines():
                 "purchaseprice,purchasevalue,currentprice,currentvalue,note,cabinet,"
                 "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
                 "supplieremail,suckling,updatedat "
-                "FROM wines WHERE name IS NOT NULL AND name != '' ORDER BY id"
+                "FROM wines WHERE owner_id=%s AND name IS NOT NULL AND name != '' ORDER BY id",
+                (owner_id,)
             )
             rows = cur.fetchall()
     return [serialize_wine(r) for r in rows]
@@ -207,7 +275,7 @@ def number_or_none(value, integer=False):
         return None
 
 
-def add_wine(data: dict) -> dict:
+def add_wine(data: dict, owner_id: int) -> dict:
     qty = number_or_none(data.get("quantity"), integer=True) or 0
     pp  = number_or_none(data.get("purchasePrice")) or 0
     cp  = number_or_none(data.get("currentPrice")) or 0
@@ -218,8 +286,8 @@ def add_wine(data: dict) -> dict:
                 INSERT INTO wines (name,type,grape,country,region,year,quantity,
                     vivino,purchaseprice,purchasevalue,currentprice,currentvalue,
                     note,cabinet,score,suppliername,suppliercontact,supplieraddress,
-                    supplierphone,supplieremail,suckling,updatedat)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    supplierphone,supplieremail,suckling,updatedat,owner_id)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id
             """, (
                 data.get("name") or None,
@@ -244,6 +312,7 @@ def add_wine(data: dict) -> dict:
                 data.get("supplierEmail") or None,
                 number_or_none(data.get("suckling")),
                 now,
+                owner_id,
             ))
             wine_id = cur.fetchone()["id"]
         conn.commit()
@@ -259,7 +328,7 @@ def add_wine(data: dict) -> dict:
     return serialize_wine(row)
 
 
-def update_wine(data: dict) -> dict:
+def update_wine(data: dict, owner_id: int) -> dict:
     wine_id = int(data.get("rowNumber") or 0)
     if not wine_id:
         raise ValueError("Ongeldig wine ID")
@@ -269,7 +338,8 @@ def update_wine(data: dict) -> dict:
                 "SELECT id,name,type,grape,country,region,year,quantity,vivino,"
                 "purchaseprice,purchasevalue,currentprice,currentvalue,note,cabinet,"
                 "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
-                "supplieremail,suckling,updatedat FROM wines WHERE id=%s", (wine_id,)
+                "supplieremail,suckling,updatedat FROM wines WHERE id=%s AND owner_id=%s",
+                (wine_id, owner_id)
             )
             existing = cur.fetchone()
     if not existing:
@@ -295,7 +365,7 @@ def update_wine(data: dict) -> dict:
                     vivino=%s,purchaseprice=%s,purchasevalue=%s,currentprice=%s,currentvalue=%s,
                     note=%s,cabinet=%s,score=%s,suppliername=%s,suppliercontact=%s,
                     supplieraddress=%s,supplierphone=%s,supplieremail=%s,suckling=%s,updatedat=%s
-                WHERE id=%s
+                WHERE id=%s AND owner_id=%s
             """, (
                 _pick("name"),
                 _pick("type"),
@@ -320,6 +390,7 @@ def update_wine(data: dict) -> dict:
                 number_or_none(data.get("suckling")) if "suckling" in data else ex.get("suckling"),
                 now,
                 wine_id,
+                owner_id,
             ))
         conn.commit()
     with get_db() as conn:
