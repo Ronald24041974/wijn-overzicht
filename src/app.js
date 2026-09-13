@@ -1869,18 +1869,27 @@ function bindEvents() {
     const username = (fd.get('newUsername') || '').trim();
     const password = (fd.get('newPassword') || '').trim();
     const role     = fd.get('newRole') || 'readonly';
+    const shareOwnKelder = role === 'readonly' && fd.get('shareOwnKelder') === 'on';
     if (!username || !password) return;
     usersPanel = { ...usersPanel, status: 'saving', error: '' };
     render();
     const r = await fetch('/api/auth?action=add-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, role }),
+      body: JSON.stringify({ username, password, role, shareOwnKelder }),
     });
     const data = await r.json().catch(() => ({}));
     usersPanel = { open: true, users: data.users || usersPanel.users, status: '', error: r.ok ? '' : (data.message || 'Toevoegen mislukt.') };
     render();
   });
+  const _toggleShareRow = () => {
+    const row = document.querySelector('#share-own-kelder-row');
+    const readonlyChecked = document.querySelector('#new-role-readonly')?.checked;
+    if (row) row.style.display = readonlyChecked ? 'flex' : 'none';
+  };
+  document.querySelector('#new-role-readonly')?.addEventListener('change', _toggleShareRow);
+  document.querySelector('#new-role-admin')?.addEventListener('change', _toggleShareRow);
+  _toggleShareRow();
 
   /* Wachtwoord wijzigen */
   document.querySelector('#change-pw-form')?.addEventListener('submit', async e => {
@@ -2151,6 +2160,7 @@ function renderUsersPanel() {
             <span class="user-name">${esc(u.username)}</span>
             <div class="user-badges">
               <span class="user-role-badge ${u.role === 'admin' || u.role === 'superadmin' ? 'role-admin' : 'role-readonly'}">${roleLabel(u.role)}</span>
+              ${u.sharesOwnerId ? `<span class="user-role-badge role-readonly" title="Deelt de kelder van een andere gebruiker">Gedeelde kelder</span>` : ''}
               ${u.totpEnabled ? `<span class="user-role-badge role-totp" title="2FA ingeschakeld">${icon2FA()} 2FA</span>` : ''}
             </div>
             ${!isSelf(u) ? `
@@ -2240,14 +2250,18 @@ function renderUsersPanel() {
         </div>
         <div class="role-toggle-row">
           <label class="role-option">
-            <input type="radio" name="newRole" value="readonly" checked />
+            <input type="radio" name="newRole" value="readonly" checked id="new-role-readonly" />
             <span>Lezer</span>
           </label>
           <label class="role-option">
-            <input type="radio" name="newRole" value="admin" />
+            <input type="radio" name="newRole" value="admin" id="new-role-admin" />
             <span>Beheerder</span>
           </label>
         </div>
+        <label class="form-field" id="share-own-kelder-row" style="flex-direction:row;align-items:center;gap:8px;margin-top:8px">
+          <input type="checkbox" name="shareOwnKelder" id="share-own-kelder" />
+          <span>Deel mijn eigen kelder met deze lezer (alleen-lezen, geen eigen lege kelder)</span>
+        </label>
         <button type="submit" class="save-button" ${status === 'saving' ? 'disabled' : ''}>
           ${status === 'saving' ? iconSpinner() + ' Opslaan…' : 'Toevoegen'}
         </button>

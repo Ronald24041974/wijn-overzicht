@@ -10,7 +10,7 @@ from lib.auth import (
 )
 from lib.db import (
     ensure_users_schema, get_user, list_users, create_user,
-    delete_user, update_password, count_users, count_admins, count_superadmins,
+    delete_user, update_password, count_users, count_superadmins,
     get_totp_secret, set_totp_secret,
 )
 from urllib.parse import urlparse, parse_qs
@@ -197,12 +197,14 @@ class handler(BaseHandler):
             auth = require_superadmin(self)
             if not auth:
                 return
+            creator_username = auth[0]
             ensure_users_schema()
             try:
-                data     = self.read_json()
-                username = (data.get("username") or "").strip()
-                password = (data.get("password") or "").strip()
-                role     = (data.get("role") or "readonly").strip()
+                data        = self.read_json()
+                username    = (data.get("username") or "").strip()
+                password    = (data.get("password") or "").strip()
+                role        = (data.get("role") or "readonly").strip()
+                shareOwnKelder = bool(data.get("shareOwnKelder"))
             except Exception:
                 self.json_response(400, {"message": "Ongeldige request."})
                 return
@@ -217,7 +219,11 @@ class handler(BaseHandler):
             if get_user(username):
                 self.json_response(409, {"message": "Dit e-mailadres is al in gebruik."})
                 return
-            create_user(username, hash_password(password), role)
+            owner_id = None
+            if role == "readonly" and shareOwnKelder:
+                creator = get_user(creator_username)
+                owner_id = creator["id"] if creator else None
+            create_user(username, hash_password(password), role, owner_id)
             self.json_response(200, {"ok": True, "users": list_users()})
             return
 
@@ -296,9 +302,6 @@ class handler(BaseHandler):
         user_row = get_user(username)
         if not user_row:
             self.json_response(404, {"message": "Gebruiker niet gevonden."})
-            return
-        if user_row["role"] == "admin" and count_admins() <= 1:
-            self.json_response(400, {"message": "Kan de laatste beheerder niet verwijderen."})
             return
         if user_row["role"] == "superadmin" and count_superadmins() <= 1:
             self.json_response(400, {"message": "Kan de laatste superadmin niet verwijderen."})
