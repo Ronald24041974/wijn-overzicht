@@ -1,14 +1,14 @@
 import sys, os, re, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.auth import require_admin
-from lib.helpers import BaseHandler, get_anthropic_client
+from lib.helpers import BaseHandler, get_anthropic_client, message_text, MODEL_SMART, SMART_OPTS
 
 
 def _scan_label(image_b64: str) -> dict:
     client = get_anthropic_client()
     vision_resp = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=600,
+        model=MODEL_SMART,
+        **SMART_OPTS,
         messages=[{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}},
             {"type": "text", "text": (
@@ -30,7 +30,7 @@ def _scan_label(image_b64: str) -> dict:
             )},
         ]}],
     )
-    text = vision_resp.content[0].text.strip()
+    text = message_text(vision_resp)
     if "```" in text:
         parts = text.split("```")
         text = parts[1].lstrip("json").strip() if len(parts) > 1 else parts[0]
@@ -45,8 +45,8 @@ def _scan_label(image_b64: str) -> dict:
             year_str = f" {int(data['year'])}" if data.get("year") else ""
             search_query = f"{wine_name}{year_str} vivino james suckling rating price"
             web_resp = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=400,
+                model=MODEL_SMART,
+                **SMART_OPTS,
                 tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
                 messages=[{"role": "user", "content": (
                     f'Zoek op Vivino en jamessuckling.com: "{search_query}". '

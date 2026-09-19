@@ -1,7 +1,7 @@
 import sys, os, re, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.auth import require_admin
-from lib.helpers import BaseHandler, get_anthropic_client
+from lib.helpers import BaseHandler, get_anthropic_client, MODEL_SMART, SMART_OPTS
 
 
 def _fetch_suckling(name: str, year: str = "") -> float | None:
@@ -12,8 +12,8 @@ def _fetch_suckling(name: str, year: str = "") -> float | None:
     year_str = f" {int(year)}" if year and str(year).strip().isdigit() else ""
     try:
         resp = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=200,
+            model=MODEL_SMART,
+            **SMART_OPTS,
             tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
             messages=[{"role": "user", "content": (
                 f'Zoek de James Suckling score voor de wijn "{name}"{year_str}. '
