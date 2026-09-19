@@ -151,6 +151,11 @@ def ensure_wines_columns():
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS proposed_at BIGINT DEFAULT 0")
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS owner_id INTEGER REFERENCES users(id)")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS producer TEXT")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS alcohol REAL")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS vivino_wine_id INTEGER")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS vivino_vintage_id INTEGER")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS vivino_ratings_count INTEGER")
         conn.commit()
 
 
@@ -230,6 +235,15 @@ def ensure_schema():
         conn.commit()
 
 
+WINE_COLS = (
+    "id,name,type,grape,country,region,year,quantity,vivino,"
+    "purchaseprice,purchasevalue,currentprice,currentvalue,note,cabinet,"
+    "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
+    "supplieremail,suckling,updatedat,producer,alcohol,"
+    "vivino_wine_id,vivino_vintage_id,vivino_ratings_count"
+)
+
+
 def serialize_wine(row):
     r = dict(row)
     return {
@@ -257,6 +271,11 @@ def serialize_wine(row):
         "supplierEmail":   r["supplieremail"],
         "suckling":        r["suckling"],
         "updatedAt":       r["updatedat"],
+        "producer":        r.get("producer"),
+        "alcohol":         r.get("alcohol"),
+        "vivinoWineId":    r.get("vivino_wine_id"),
+        "vivinoVintageId": r.get("vivino_vintage_id"),
+        "vivinoRatingsCount": r.get("vivino_ratings_count"),
     }
 
 
@@ -264,10 +283,7 @@ def load_wines(owner_id: int):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id,name,type,grape,country,region,year,quantity,vivino,"
-                "purchaseprice,purchasevalue,currentprice,currentvalue,note,cabinet,"
-                "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
-                "supplieremail,suckling,updatedat "
+                "SELECT " + WINE_COLS + " "
                 "FROM wines WHERE owner_id=%s AND name IS NOT NULL AND name != '' ORDER BY id",
                 (owner_id,)
             )
@@ -295,8 +311,8 @@ def add_wine(data: dict, owner_id: int) -> dict:
                 INSERT INTO wines (name,type,grape,country,region,year,quantity,
                     vivino,purchaseprice,purchasevalue,currentprice,currentvalue,
                     note,cabinet,score,suppliername,suppliercontact,supplieraddress,
-                    supplierphone,supplieremail,suckling,updatedat,owner_id)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    supplierphone,supplieremail,suckling,updatedat,owner_id,producer,alcohol)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id
             """, (
                 data.get("name") or None,
@@ -322,16 +338,15 @@ def add_wine(data: dict, owner_id: int) -> dict:
                 number_or_none(data.get("suckling")),
                 now,
                 owner_id,
+                data.get("producer") or None,
+                number_or_none(data.get("alcohol")),
             ))
             wine_id = cur.fetchone()["id"]
         conn.commit()
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id,name,type,grape,country,region,year,quantity,vivino,"
-                "purchaseprice,purchasevalue,currentprice,currentvalue,note,cabinet,"
-                "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
-                "supplieremail,suckling,updatedat FROM wines WHERE id=%s", (wine_id,)
+                "SELECT " + WINE_COLS + " FROM wines WHERE id=%s", (wine_id,)
             )
             row = cur.fetchone()
     return serialize_wine(row)
@@ -344,10 +359,7 @@ def update_wine(data: dict, owner_id: int) -> dict:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id,name,type,grape,country,region,year,quantity,vivino,"
-                "purchaseprice,purchasevalue,currentprice,currentvalue,note,cabinet,"
-                "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
-                "supplieremail,suckling,updatedat FROM wines WHERE id=%s AND owner_id=%s",
+                "SELECT " + WINE_COLS + " FROM wines WHERE id=%s AND owner_id=%s",
                 (wine_id, owner_id)
             )
             existing = cur.fetchone()
@@ -373,7 +385,8 @@ def update_wine(data: dict, owner_id: int) -> dict:
                     name=%s,type=%s,grape=%s,country=%s,region=%s,year=%s,quantity=%s,
                     vivino=%s,purchaseprice=%s,purchasevalue=%s,currentprice=%s,currentvalue=%s,
                     note=%s,cabinet=%s,score=%s,suppliername=%s,suppliercontact=%s,
-                    supplieraddress=%s,supplierphone=%s,supplieremail=%s,suckling=%s,updatedat=%s
+                    supplieraddress=%s,supplierphone=%s,supplieremail=%s,suckling=%s,updatedat=%s,
+                    producer=%s,alcohol=%s
                 WHERE id=%s AND owner_id=%s
             """, (
                 _pick("name"),
@@ -398,6 +411,8 @@ def update_wine(data: dict, owner_id: int) -> dict:
                 _pick("supplierEmail", "supplieremail"),
                 number_or_none(data.get("suckling")) if "suckling" in data else ex.get("suckling"),
                 now,
+                _pick("producer"),
+                number_or_none(data.get("alcohol")) if "alcohol" in data else ex.get("alcohol"),
                 wine_id,
                 owner_id,
             ))
@@ -405,10 +420,51 @@ def update_wine(data: dict, owner_id: int) -> dict:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id,name,type,grape,country,region,year,quantity,vivino,"
-                "purchaseprice,purchasevalue,currentprice,currentvalue,note,cabinet,"
-                "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
-                "supplieremail,suckling,updatedat FROM wines WHERE id=%s", (wine_id,)
+                "SELECT " + WINE_COLS + " FROM wines WHERE id=%s", (wine_id,)
             )
             row = cur.fetchone()
     return serialize_wine(row)
+
+
+def get_wine_row(wine_id: int, owner_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT " + WINE_COLS + " FROM wines WHERE id=%s AND owner_id=%s", (wine_id, owner_id))
+            row = cur.fetchone()
+    return serialize_wine(row) if row else None
+
+
+def apply_vivino_match(wine_id: int, owner_id: int, c: dict) -> dict:
+    """Schrijft een door de gebruiker bevestigde Vivino-kandidaat weg.
+    Regio/land worden alleen ingevuld als ze bij ons nog leeg zijn."""
+    rating = number_or_none(c.get("rating"))
+    if rating is not None and not (0 < rating <= 5):
+        raise ValueError("Ongeldige Vivino-score")
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE wines SET
+                    vivino=COALESCE(%s, vivino),
+                    producer=COALESCE(%s, producer),
+                    alcohol=COALESCE(%s, alcohol),
+                    region=COALESCE(NULLIF(region,''), %s),
+                    country=COALESCE(NULLIF(country,''), %s),
+                    vivino_wine_id=%s, vivino_vintage_id=%s, vivino_ratings_count=%s,
+                    updatedat=%s
+                WHERE id=%s AND owner_id=%s
+            """, (
+                rating,
+                (c.get("winery") or "").strip() or None,
+                number_or_none(c.get("alcohol")),
+                (c.get("region") or "").strip() or None,
+                (c.get("country") or "").strip() or None,
+                number_or_none(c.get("wineId"), integer=True),
+                number_or_none(c.get("vintageId"), integer=True),
+                number_or_none(c.get("ratingsCount"), integer=True),
+                int(time.time()),
+                wine_id, owner_id,
+            ))
+            if cur.rowcount == 0:
+                raise ValueError(f"Wijn ID {wine_id} niet gevonden")
+        conn.commit()
+    return get_wine_row(wine_id, owner_id)

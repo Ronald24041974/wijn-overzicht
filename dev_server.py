@@ -18,7 +18,11 @@ def _load_env():
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
                     k, _, v = line.partition('=')
-                    os.environ.setdefault(k.strip(), v.strip())
+                    v = v.strip()
+                    # `vercel env pull` zet waarden tussen aanhalingstekens
+                    if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+                        v = v[1:-1]
+                    os.environ.setdefault(k.strip(), v)
 
 _load_env()
 os.environ['DEV_MODE'] = '1'
@@ -59,6 +63,11 @@ def _load_api_handler(path_only):
 
 
 class DevHandler(SimpleHTTPRequestHandler):
+
+    def end_headers(self):
+        # Statische bestanden nooit cachen tijdens lokaal testen
+        self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
 
     def _dispatch(self):
         self.path = _rewrite(self.path)

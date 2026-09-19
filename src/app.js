@@ -28,6 +28,7 @@ let filters = {
 let supplierSearch = { wineId: null, status: '', results: [], error: '' };
 let collapsedSections = {};
 let imagePicker   = { wineId: null, open: false, status: '', images: [], source: '', proposed: null, error: '' };
+let vivinoMatch   = { wineId: null, open: false, status: '', candidates: [], selected: null, error: '' };
 let imageCacheBust = {};
 let zoomedWineId  = null;
 let uploadState   = { file: null, previewUrl: null, status: '', error: '' };
@@ -791,18 +792,32 @@ function editorPanel(wine) {
 
       ${isOut && supActive ? renderSupplierResults() : ''}
 
+      ${admin ? `
+        <div class="vivino-link-row">
+          <button type="button" class="ghost-button vivino-link-btn" id="open-vivino-match">
+            ${vivinoMatch.open && vivinoMatch.wineId === wine.id ? 'Sluiten' : (wine.vivinoWineId ? '★ Opnieuw koppelen met Vivino' : '★ Koppel met Vivino')}
+          </button>
+          ${wine.vivinoRatingsCount ? `<span class="vivino-link-meta">Vivino · ${number(wine.vivinoRatingsCount)} beoordelingen</span>` : ''}
+        </div>
+        ${vivinoMatch.open && vivinoMatch.wineId === wine.id ? renderVivinoMatch(wine) : ''}
+      ` : ''}
+
       <${admin ? 'form id="edit-form"' : 'div'} class="wine-form">
         <input type="hidden" name="rowNumber" value="${wine.rowNumber || ''}" />
 
         ${sectionToggle('Wijngegevens', 'wijngegevens', false)}
         <div class="section-body${isSectionOpen('wijngegevens', false) ? '' : ' section-collapsed'}">
           ${formField('Naam', 'name', wine.name, true, '', !admin)}
+          ${formField('Producent', 'producer', wine.producer, false, '', !admin)}
           <div class="form-row">
             ${formField('Soort', 'type', wine.type, false, '', !admin)}
             ${formField('Jaar',  'year', wine.year, false, 'numeric', !admin)}
           </div>
           ${selectFormField('Wijnkast', 'cabinet', CABINETS, wine.cabinet || 'Niet ingedeeld', !admin)}
-          ${formField('Druifsoort', 'grape', wine.grape, false, '', !admin)}
+          <div class="form-row">
+            ${formField('Druifsoort', 'grape', wine.grape, false, '', !admin)}
+            ${formField('Alcohol %', 'alcohol', wine.alcohol, false, 'decimal', !admin)}
+          </div>
           <div class="form-row">
             ${formField('Land',  'country', wine.country, false, '', !admin)}
             ${formField('Regio', 'region',  wine.region, false, '', !admin)}
@@ -1052,6 +1067,105 @@ function renderImagePicker(wine) {
       ` : ''}
     </div>
   `;
+}
+
+/* Vivino-koppeling: kandidaten tonen, gebruiker bevestigt — niets automatisch */
+function renderVivinoMatch(wine) {
+  const s = vivinoMatch;
+  const fmtScore = v => (v ? Number(v).toFixed(1) : '—');
+  const fmtPct = v => (v ? `${Number(v).toLocaleString('nl-NL', { maximumFractionDigits: 1 })} %` : '—');
+  const c = s.selected != null ? s.candidates[s.selected] : null;
+  const changes = c ? [
+    ['Vivino', fmtScore(wine.vivino), fmtScore(c.rating || wine.vivino)],
+    ['Producent', wine.producer || '—', c.winery || wine.producer || '—'],
+    ['Alcohol', fmtPct(wine.alcohol), fmtPct(c.alcohol || wine.alcohol)],
+    ['Regio', wine.region || '—', wine.region || c.region || '—'],
+    ['Land', wine.country || '—', wine.country || c.country || '—'],
+  ].filter(([, a, b]) => a !== b) : [];
+
+  return `
+    <div class="img-picker-panel vivino-panel">
+      ${s.status === 'loading' ? `<div class="img-picker-loading">${iconSpinner()} Zoeken op Vivino…</div>` : ''}
+      ${s.status === 'saving'  ? `<div class="img-picker-loading">${iconSpinner()} Koppeling opslaan…</div>` : ''}
+      ${s.status === 'error'   ? `<p class="supplier-error">⚠ ${esc(s.error)}</p>` : ''}
+      ${s.status === 'ok' && !s.candidates.length ? `<p class="empty" style="padding:4px 0 6px">Geen treffers op Vivino. Controleer de spelling van de naam.</p>` : ''}
+      ${s.status === 'ok' && s.candidates.length ? `
+        <p class="img-picker-hint">Kies de juiste wijn. Scores gelden voor jouw jaargang als die op Vivino staat.</p>
+        <div class="vivino-cands">
+          ${s.candidates.map((k, i) => `
+            <button type="button" class="vivino-cand ${s.selected === i ? 'selected' : ''}" data-cand="${i}">
+              <span class="vivino-cand-img">${k.imageUrl ? `<img src="${esc(k.imageUrl)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />` : ''}</span>
+              <span class="vivino-cand-body">
+                <strong>${esc(k.name)}</strong>
+                <span class="vivino-cand-meta">${esc([k.region, k.country].filter(Boolean).join(' · '))}</span>
+                <span class="vivino-cand-meta">★ ${fmtScore(k.rating)}${k.rating ? ` · ${number(k.ratingsCount)} beoordelingen · ${esc(k.ratingSource)}` : ' · nog geen score'}</span>
+                <span class="vivino-badges">
+                  ${k.nonVintage ? `<span class="vivino-badge warn">Non-vintage</span>` :
+                    k.yearMatch === true ? `<span class="vivino-badge ok">Jaargang ${esc(wine.year)} ✓</span>` :
+                    k.yearMatch === false ? `<span class="vivino-badge warn">Jaargang ${esc(wine.year)} niet op Vivino</span>` : ''}
+                  ${k.typeMatch === false ? `<span class="vivino-badge bad">${esc(k.type)} ≠ ${esc(wine.type)}</span>` : ''}
+                  ${k.alcohol ? `<span class="vivino-badge ok">${fmtPct(k.alcohol)}</span>` : ''}
+                </span>
+              </span>
+            </button>
+          `).join('')}
+        </div>
+        ${c ? `
+          <div class="vivino-changes">
+            <p class="img-picker-hint" style="margin:10px 0 6px">Wat verandert</p>
+            ${changes.length ? changes.map(([l, a, b]) => `<div class="vivino-change"><span>${esc(l)}</span><s>${esc(a)}</s><span>→</span><strong>${esc(b)}</strong></div>`).join('')
+                             : `<p class="vivino-change-none">Alleen de koppeling wordt vastgelegd; de gegevens zijn al gelijk.</p>`}
+          </div>
+        ` : ''}
+        <div class="img-proposed-actions" style="margin-top:10px">
+          <button type="button" class="save-button" id="vivino-apply" style="flex:1;margin:0" ${c ? '' : 'disabled'}>Koppelen</button>
+          <button type="button" class="step-button" id="vivino-cancel" style="width:auto;padding:0 14px" title="Annuleren">${iconClose()}</button>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+async function handleVivinoSearch(wine) {
+  vivinoMatch = { wineId: wine.id, open: true, status: 'loading', candidates: [], selected: null, error: '' };
+  render();
+  try {
+    const r = await fetch('/api/lookup?action=vivino_search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rowNumber: wine.rowNumber }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.message || 'Zoeken mislukt');
+    const cands = data.candidates || [];
+    const first = cands.findIndex(k => k.yearMatch !== false && k.typeMatch !== false);
+    vivinoMatch = { ...vivinoMatch, status: 'ok', candidates: cands, selected: first >= 0 ? first : null };
+  } catch (e) {
+    vivinoMatch = { ...vivinoMatch, status: 'error', error: e.message };
+  }
+  render();
+}
+
+async function handleVivinoApply(wine) {
+  const cand = vivinoMatch.selected != null ? vivinoMatch.candidates[vivinoMatch.selected] : null;
+  if (!cand) return;
+  vivinoMatch = { ...vivinoMatch, status: 'saving' };
+  render();
+  try {
+    const r = await fetch('/api/lookup?action=vivino_apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rowNumber: wine.rowNumber, candidate: cand }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.message || 'Opslaan mislukt');
+    wines = data.wines.filter(w => w.name).map(hydrateWine);
+    vivinoMatch = { wineId: null, open: false, status: '', candidates: [], selected: null, error: '' };
+    statusMsg = 'Gekoppeld aan Vivino.';
+  } catch (e) {
+    vivinoMatch = { ...vivinoMatch, status: 'error', error: e.message };
+  }
+  render();
 }
 
 async function triggerAutoImageCheck(wine) {
@@ -1938,6 +2052,7 @@ function bindEvents() {
       if (newId !== selectedId) {
         supplierSearch = { wineId: null, status: '', results: [], error: '' };
         imagePicker   = { wineId: null, open: false, status: '', images: [], source: '', proposed: null, error: '' };
+        vivinoMatch   = { wineId: null, open: false, status: '', candidates: [], selected: null, error: '' };
         if (uploadState.previewUrl) URL.revokeObjectURL(uploadState.previewUrl);
         uploadState   = { file: null, previewUrl: null, status: '', error: '' };
       }
@@ -1951,6 +2066,29 @@ function bindEvents() {
   /* Bestel online */
   document.querySelector('#find-suppliers')?.addEventListener('click', () => {
     handleFindSuppliers(getSelected());
+  });
+
+  /* Vivino-koppeling */
+  document.querySelector('#open-vivino-match')?.addEventListener('click', () => {
+    const wine = getSelected();
+    if (!wine) return;
+    if (vivinoMatch.open && vivinoMatch.wineId === wine.id) {
+      vivinoMatch = { wineId: null, open: false, status: '', candidates: [], selected: null, error: '' };
+      render();
+    } else {
+      handleVivinoSearch(wine);
+    }
+  });
+  document.querySelectorAll('.vivino-cand').forEach(btn => {
+    btn.addEventListener('click', () => {
+      vivinoMatch = { ...vivinoMatch, selected: Number(btn.dataset.cand) };
+      render();
+    });
+  });
+  document.querySelector('#vivino-apply')?.addEventListener('click', () => handleVivinoApply(getSelected()));
+  document.querySelector('#vivino-cancel')?.addEventListener('click', () => {
+    vivinoMatch = { wineId: null, open: false, status: '', candidates: [], selected: null, error: '' };
+    render();
   });
 
   /* Afbeeldingskiezer */
