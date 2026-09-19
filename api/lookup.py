@@ -1,7 +1,10 @@
 import sys, os, json, re
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from urllib.parse import urlparse, parse_qs
 from lib.auth import require_admin
 from lib.helpers import BaseHandler, get_anthropic_client, message_text, MODEL_FAST
+from lib.db import ensure_wines_columns, resolve_owner_id, get_wine_row, apply_vivino_match, load_wines
+from lib.vivino import find_candidates
 
 
 def _lookup_wine(name: str) -> dict:
@@ -47,14 +50,47 @@ Regels:
 
 class handler(BaseHandler):
     def do_POST(self):
-        if not require_admin(self): return
+        auth = require_admin(self)
+        if not auth: return
+        username, role = auth
+        action = parse_qs(urlparse(self.path).query).get("action", [""])[0]
         try:
             data = self.read_json()
-            name = (data.get("name") or "").strip()
-            if not name:
-                self.json_response(400, {"message": "Naam is vereist."})
-                return
-            result = _lookup_wine(name)
-            self.json_response(200, result)
+            if action == "vivino_search":
+                self._vivino_search(data, username, role)
+            elif action == "vivino_apply":
+                self._vivino_apply(data, username, role)
+            else:
+                name = (data.get("name") or "").strip()
+                if not name:
+                    self.json_response(400, {"message": "Naam is vereist."})
+                    return
+                self.json_response(200, _lookup_wine(name))
         except Exception as e:
             self.json_response(500, {"message": str(e)})
+
+    def _wine_for(self, data, username, role):
+        ensure_wines_columns()
+        owner_id = resolve_owner_id(username, role)
+        wine_id = int(data.get("rowNumber") or 0)
+        wine = get_wine_row(wine_id, owner_id) if wine_id else None
+        if not wine:
+            self.json_response(404, {"message": "Wijn niet gevonden."})
+            return None, None
+        return wine, owner_id
+
+    def _vivino_search(self, data, username, role):
+        wine, owner_id = self._wine_for(data, username, role)
+        if not wine: return
+        candidates = find_candidates(wine["name"], wine.get("year"), wine.get("type"))
+        self.json_response(200, {"wine": wine, "candidates": candidates})
+
+    def _vivino_apply(self, data, username, role):
+        wine, owner_id = self._wine_for(data, username, role)
+        if not wine: return
+        cand = data.get("candidate") or {}
+        if not cand.get("wineId"):
+            self.json_response(400, {"message": "Geen kandidaat gekozen."})
+            return
+        updated = apply_vivino_match(wine["rowNumber"], owner_id, cand)
+        self.json_response(200, {"wine": updated, "wines": load_wines(owner_id)})

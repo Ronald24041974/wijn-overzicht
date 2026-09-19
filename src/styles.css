@@ -2362,3 +2362,54 @@ h1, h2, h3, p { margin: 0; }
   padding: 7px 10px;
   margin: 4px 0;
 }
+
+/* ---------- Vivino-koppeling ---------- */
+.vivino-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+.vivino-link-btn { padding: 8px 12px; font-size: 0.82rem; }
+.vivino-link-meta { font-size: 0.74rem; color: var(--c-muted); white-space: nowrap; }
+.vivino-cands { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.vivino-cand {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(33,63,57,.14);
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.vivino-cand:hover { border-color: rgba(33,63,57,.35); }
+.vivino-cand.selected { border-color: var(--c-brand); box-shadow: 0 0 0 2px rgba(33,63,57,.12); }
+.vivino-cand-img { width: 36px; height: 60px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.vivino-cand-img img { max-height: 60px; max-width: 36px; object-fit: contain; }
+.vivino-cand-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.vivino-cand-body strong { font-size: 0.9rem; line-height: 1.25; }
+.vivino-cand-meta { font-size: 0.76rem; color: var(--c-muted); }
+.vivino-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
+.vivino-badge { font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+.vivino-badge.ok   { background: #e2f5ea; color: #1a6640; }
+.vivino-badge.warn { background: #fdf1d6; color: #7a5a12; }
+.vivino-badge.bad  { background: #fde8eb; color: var(--c-red-dark); }
+.vivino-changes { margin-top: 4px; }
+.vivino-change {
+  display: grid;
+  grid-template-columns: 90px 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.8rem;
+  padding: 5px 0;
+  border-top: 1px solid rgba(33,63,57,.08);
+}
+.vivino-change s { color: var(--c-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vivino-change strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vivino-change-none { font-size: 0.78rem; color: var(--c-muted); margin: 0; }

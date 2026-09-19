@@ -123,6 +123,10 @@ function adaptWine(r) {
     inkoop: (r.purchasePrice != null) ? Number(r.purchasePrice) : 0,
     kast: r.cabinet || 'Niet ingedeeld',
     notitie: r.note || '',
+    producent: r.producer || '',
+    alcohol: (r.alcohol != null) ? Number(r.alcohol) : null,
+    vivinoId: r.vivinoWineId || null,
+    vivinoCount: r.vivinoRatingsCount || null,
     leverancier: {
       naam: r.supplierName || '', contact: r.supplierContact || '',
       tel: r.supplierPhone || '', email: r.supplierEmail || '', adres: r.supplierAddress || '',
@@ -672,7 +676,7 @@ function SupplierList({ w }) {
   );
 }
 
-function DetailScreen({ w, onBack, onEdit, onDeleted }) {
+function DetailScreen({ w, onBack, onEdit, onDeleted, onVivino }) {
   const [zoom, setZoom] = useSt(false);
   const [deleting, setDeleting] = useSt(false);
   const t = window.TYPE[w.soort] || window.TYPE.Rood;
@@ -741,11 +745,13 @@ function DetailScreen({ w, onBack, onEdit, onDeleted }) {
           <StockCard w={w} />
 
           <window.GroupSection title="Wijngegevens" rows={[
-            ['Soort', w.soort], ['Jaar', w.jaar || '—'], ['Druifsoort', w.druif || '—'],
-            ['Land', w.land || '—'], ['Regio', w.regio || '—'], ['Wijnkast', w.kast],
+            ['Soort', w.soort], ['Producent', w.producent || '—'], ['Jaar', w.jaar || '—'], ['Druifsoort', w.druif || '—'],
+            ['Land', w.land || '—'], ['Regio', w.regio || '—'],
+            ['Alcohol', w.alcohol ? w.alcohol.toLocaleString('nl-NL', { maximumFractionDigits: 1 }) + ' %' : '—'], ['Wijnkast', w.kast],
           ]} />
           <window.GroupSection title="Waardering & prijs" rows={[
-            ['Vivino', Number(w.vivino).toFixed(1)], ['James Suckling', w.js ? w.js + ' /100' : '—'],
+            ['Vivino', w.vivino ? Number(w.vivino).toFixed(1) + (w.vivinoCount ? ' · ' + w.vivinoCount.toLocaleString('nl-NL') + ' beoordelingen' : '') : '—'],
+            ['James Suckling', w.js ? w.js + ' /100' : '—'],
             ['Mijn score', (w.mijn || 0) + ' /10'], ['Inkoopprijs', window.fmtEur(w.inkoop)], ['Prijs per fles', window.fmtEur(w.prijs)],
           ]} />
           {w.notitie && (
@@ -757,7 +763,15 @@ function DetailScreen({ w, onBack, onEdit, onDeleted }) {
           ]} />
 
           {admin && (
-            <button onClick={handleDelete} className="tap" style={{ width: '100%', marginTop: 22, padding: '13px', borderRadius: 14, border: 'none', cursor: 'pointer',
+            <button onClick={() => onVivino && onVivino(w)} className="tap" style={{ width: '100%', marginTop: 22, padding: '13px', borderRadius: 14, border: 'none', cursor: 'pointer',
+              background: 'var(--surface)', color: 'var(--brand)', fontSize: 15, fontWeight: 590, fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: 'var(--shadow), var(--hair)' }}>
+              <window.IcStar size={15} style={{ color: 'var(--gold)' }} /> {w.vivinoId ? 'Opnieuw koppelen met Vivino' : 'Koppel met Vivino'}
+            </button>
+          )}
+
+          {admin && (
+            <button onClick={handleDelete} className="tap" style={{ width: '100%', marginTop: 12, padding: '13px', borderRadius: 14, border: 'none', cursor: 'pointer',
               background: 'var(--surface)', color: 'var(--red)', fontSize: 15, fontWeight: 590, fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: 'var(--shadow), var(--hair)', opacity: deleting ? 0.6 : 1 }}>
               <window.IcTrash size={16} /> {deleting ? 'Verwijderen…' : 'Verwijder wijn'}
@@ -785,6 +799,202 @@ function DetailScreen({ w, onBack, onEdit, onDeleted }) {
 }
 
 window.DetailScreen = DetailScreen;
+  </script>
+
+  <!-- ───────────────────────── vivino-koppeling ───────────────────────── -->
+  <script type="text/babel">
+const { useState: useVv, useEffect: useVvEffect } = React;
+
+const fmtScore = (v) => (v ? Number(v).toFixed(1) : '—');
+const fmtPct = (v) => (v ? Number(v).toLocaleString('nl-NL', { maximumFractionDigits: 1 }) + ' %' : '—');
+const fmtCount = (n) => Number(n || 0).toLocaleString('nl-NL');
+
+function VivinoBadge({ ok, warn, children }) {
+  const bg = ok ? 'var(--brand-pale)' : warn ? 'var(--amber-bg)' : 'rgba(200,60,60,0.10)';
+  const fg = ok ? 'var(--brand)' : warn ? 'var(--amber-ink)' : 'var(--red)';
+  return <span style={{ fontSize: 11.5, fontWeight: 590, padding: '3px 8px', borderRadius: 999, background: bg, color: fg, whiteSpace: 'nowrap' }}>{children}</span>;
+}
+
+function VivinoCandidate({ c, w, selected, onSelect }) {
+  const yearBadge = c.nonVintage ? <VivinoBadge warn>Non-vintage</VivinoBadge>
+    : c.yearMatch === true ? <VivinoBadge ok>Jaargang {w.jaar} ✓</VivinoBadge>
+    : c.yearMatch === false ? <VivinoBadge warn>Jaargang {w.jaar} niet op Vivino</VivinoBadge> : null;
+  const typeBadge = c.typeMatch === false ? <VivinoBadge>{c.type} ≠ {w.soort}</VivinoBadge> : null;
+  return (
+    <button onClick={onSelect} className="tap" style={{ width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+      background: 'var(--surface)', borderRadius: 16, padding: 14, display: 'flex', gap: 14, alignItems: 'flex-start',
+      border: selected ? '1.5px solid var(--brand)' : '1.5px solid transparent', boxShadow: 'var(--shadow), var(--hair)' }}>
+      <div style={{ width: 44, height: 72, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {c.imageUrl ? <img src={c.imageUrl} alt="" style={{ maxHeight: 72, maxWidth: 44, objectFit: 'contain' }} onError={e => { e.currentTarget.style.visibility = 'hidden'; }} />
+          : <window.Bottle soort={c.type || w.soort} h={64} />}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.25 }}>{c.name}</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>{[c.region, c.country].filter(Boolean).join(' · ')}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: 14, color: 'var(--ink)', fontWeight: 590 }}>
+          <window.IcStar size={13} style={{ color: 'var(--gold)' }} /> {fmtScore(c.rating)}
+          <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>
+            {c.rating ? `· ${fmtCount(c.ratingsCount)} beoordelingen · ${c.ratingSource}` : '· nog geen score'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          {yearBadge}{typeBadge}
+          {c.alcohol ? <VivinoBadge ok>{fmtPct(c.alcohol)}</VivinoBadge> : null}
+        </div>
+      </div>
+      <div style={{ width: 22, height: 22, borderRadius: 999, flexShrink: 0, marginTop: 2, border: selected ? 'none' : '1.5px solid var(--sep)',
+        background: selected ? 'var(--brand)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {selected && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>}
+      </div>
+    </button>
+  );
+}
+
+function VivinoChanges({ w, c }) {
+  const rows = [
+    ['Vivino', fmtScore(w.vivino), fmtScore(c.rating || w.vivino)],
+    ['Producent', w.producent || '—', c.winery || w.producent || '—'],
+    ['Alcohol', fmtPct(w.alcohol), fmtPct(c.alcohol || w.alcohol)],
+    ['Regio', w.regio || '—', w.regio || c.region || '—'],
+    ['Land', w.land || '—', w.land || c.country || '—'],
+  ].filter(([, a, b]) => a !== b);
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)', padding: '0 6px 8px' }}>Wat verandert</div>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow), var(--hair)' }}>
+        {rows.length === 0 && <div style={{ padding: '12px 16px', fontSize: 14, color: 'var(--muted)' }}>Alleen de koppeling wordt vastgelegd; de gegevens zijn al gelijk.</div>}
+        {rows.map(([label, from, to], i) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', minHeight: 44, borderTop: i ? '0.5px solid var(--sep)' : 'none' }}>
+            <span style={{ fontSize: 14.5, color: 'var(--muted)', flexShrink: 0 }}>{label}</span>
+            <span style={{ flex: 1, textAlign: 'right', fontSize: 14.5, color: 'var(--faint)', textDecoration: 'line-through', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{from}</span>
+            <window.IcArrowR size={13} style={{ color: 'var(--faint)', flexShrink: 0 }} />
+            <span style={{ fontSize: 14.5, fontWeight: 590, color: 'var(--ink)', textAlign: 'right', maxWidth: '45%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{to}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Loopt wijn-voor-wijn door `queue`; elke koppeling wordt expliciet bevestigd, niets gaat automatisch.
+function VivinoSheet({ queue, onClose }) {
+  const [idx, setIdx] = useVv(0);
+  const [status, setStatus] = useVv('loading');
+  const [cands, setCands] = useVv([]);
+  const [sel, setSel] = useVv(null);
+  const [err, setErr] = useVv('');
+  const [done, setDone] = useVv({ linked: 0, skipped: 0 });
+  const total = queue.length;
+  const w = queue[idx];
+
+  useVvEffect(() => {
+    if (!w) { setStatus('done'); return; }
+    let alive = true;
+    setStatus('loading'); setCands([]); setSel(null); setErr('');
+    window.fetchJSON('/api/lookup?action=vivino_search', { method: 'POST', body: JSON.stringify({ rowNumber: w.rowNumber }) })
+      .then(r => {
+        if (!alive) return;
+        if (!r.ok) { setErr(r.data.message || 'Zoeken mislukt.'); setStatus('error'); return; }
+        const cs = r.data.candidates || [];
+        setCands(cs);
+        const first = cs.findIndex(c => c.yearMatch !== false && c.typeMatch !== false);
+        setSel(first >= 0 ? first : null);
+        setStatus('ok');
+      })
+      .catch(() => { if (alive) { setErr('Netwerkfout — probeer opnieuw.'); setStatus('error'); } });
+    return () => { alive = false; };
+  }, [idx]);
+
+  const advance = (kind) => {
+    setDone(d => ({ ...d, [kind]: d[kind] + 1 }));
+    if (idx + 1 >= total) setStatus('done'); else setIdx(idx + 1);
+  };
+
+  const apply = async () => {
+    if (sel == null || status === 'saving') return;
+    setStatus('saving');
+    let r;
+    try {
+      r = await window.fetchJSON('/api/lookup?action=vivino_apply', { method: 'POST', body: JSON.stringify({ rowNumber: w.rowNumber, candidate: cands[sel] }) });
+    } catch (e) { r = { ok: false, data: {} }; }
+    if (!r.ok) { setErr(r.data.message || 'Opslaan mislukt.'); setStatus('error'); return; }
+    if (r.data.wines) { window.WINES = r.data.wines.map(window.adaptWine); if (window.__refresh) window.__refresh(); }
+    advance('linked');
+  };
+
+  const btn = (label, on, { primary, disabled } = {}) => (
+    <button onClick={on} disabled={disabled} className="tap" style={{ flex: primary ? 2 : 1, padding: '14px', borderRadius: 13, border: 'none', cursor: disabled ? 'default' : 'pointer',
+      fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, opacity: disabled ? 0.45 : 1,
+      background: primary ? 'var(--brand)' : 'var(--surface)', color: primary ? '#fff' : 'var(--ink)',
+      boxShadow: primary ? 'none' : 'var(--shadow), var(--hair)' }}>{label}</button>
+  );
+
+  return (
+    <div style={{ position: 'relative', height: '100%', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '50px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--faint)' }}>
+            {total > 1 ? `${Math.min(idx + 1, total)} van ${total}` : 'Vivino'}
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 680, letterSpacing: -0.5, color: 'var(--ink)', marginTop: 3 }}>Koppel met Vivino</div>
+        </div>
+        <window.GlassBtn onClick={onClose}><window.IcX size={18} /></window.GlassBtn>
+      </div>
+
+      <div className="scroll" style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 24px' }}>
+        {status === 'done' ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <window.IcStar size={40} style={{ color: 'var(--gold)' }} />
+            <div style={{ fontSize: 22, fontWeight: 680, color: 'var(--ink)', marginTop: 14 }}>Klaar</div>
+            <div style={{ fontSize: 15, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
+              {done.linked} gekoppeld · {done.skipped} overgeslagen
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 14, display: 'flex', gap: 14, alignItems: 'center', boxShadow: 'var(--shadow), var(--hair)' }}>
+              <window.WineThumb w={w} h={64} label year={w.jaar} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)' }}>Jouw wijn</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)', marginTop: 3, lineHeight: 1.25 }}>{w.naam}</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>{[w.jaar, w.soort, w.druif, w.regio].filter(Boolean).join(' · ')}</div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)', padding: '22px 6px 8px' }}>Gevonden op Vivino</div>
+
+            {status === 'loading' && <div style={{ padding: '26px 0', textAlign: 'center', fontSize: 14, color: 'var(--muted)' }}>Zoeken op Vivino…</div>}
+            {status === 'error' && (
+              <div style={{ padding: 14, borderRadius: 13, background: 'rgba(200,60,60,0.08)', color: 'var(--red)', fontSize: 14 }}>
+                {err}
+              </div>
+            )}
+            {(status === 'ok' || status === 'saving') && cands.length === 0 && (
+              <div style={{ padding: '22px 14px', textAlign: 'center', fontSize: 14, color: 'var(--muted)', lineHeight: 1.5 }}>Geen treffers op Vivino. Controleer de spelling van de naam of sla deze wijn over.</div>
+            )}
+            {(status === 'ok' || status === 'saving') && cands.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {cands.map((c, i) => <VivinoCandidate key={c.wineId} c={c} w={w} selected={sel === i} onSelect={() => setSel(i)} />)}
+              </div>
+            )}
+            {(status === 'ok' || status === 'saving') && sel != null && cands[sel] && <VivinoChanges w={w} c={cands[sel]} />}
+          </>
+        )}
+      </div>
+
+      <div style={{ flexShrink: 0, padding: '12px 18px calc(18px + env(safe-area-inset-bottom, 0px))', display: 'flex', gap: 10, background: 'var(--bg)', borderTop: '0.5px solid var(--sep)' }}>
+        {status === 'done' ? btn('Sluiten', onClose, { primary: true }) : (
+          <>
+            {btn(total > 1 ? 'Overslaan' : 'Annuleren', () => total > 1 ? advance('skipped') : onClose(), { disabled: status === 'saving' })}
+            {btn(status === 'saving' ? 'Koppelen…' : 'Koppelen', apply, { primary: true, disabled: sel == null || status !== 'ok' })}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+window.VivinoSheet = VivinoSheet;
   </script>
 
   <!-- ───────────────────────── nieuwe fles / bewerken ───────────────────────── -->
@@ -1243,7 +1453,7 @@ function SuperadminUserPicker() {
   );
 }
 
-function AccountScreen({ me, onTab }) {
+function AccountScreen({ me, onTab, onVivinoAll }) {
   const admin = me && (me.role === 'admin' || me.role === 'superadmin');
   const superadmin = me && me.role === 'superadmin';
   const username = (me && me.username) || '';
@@ -1312,6 +1522,30 @@ function AccountScreen({ me, onTab }) {
             </div>
             {msg && <div style={{ fontSize: 12.5, color: msg.c, padding: '8px 8px 0', fontWeight: 500 }}>{msg.t}</div>}
           </window.LabeledSection>
+
+          {window.IS_ADMIN && (() => {
+            const open = window.WINES.filter(w => !w.vivinoId).length;
+            return (
+              <window.LabeledSection label="Kelder verrijken">
+                <div className="add-group">
+                  <button onClick={() => open && onVivinoAll && onVivinoAll()} disabled={!open} className="tap"
+                    style={{ width: '100%', ...rowBase, border: 'none', background: 'none', cursor: open ? 'pointer' : 'default', fontFamily: 'inherit', opacity: open ? 1 : 0.6 }}>
+                    <window.IcStar size={18} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+                    <span style={{ flex: 1, textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontSize: 15, color: 'var(--ink)', fontWeight: 500 }}>Vivino-matching starten</span>
+                      <span style={{ display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
+                        {open ? `${open} ${open === 1 ? 'wijn' : 'wijnen'} nog zonder koppeling` : 'Alle wijnen zijn gekoppeld'}
+                      </span>
+                    </span>
+                    <window.IcChevR size={16} style={{ color: 'var(--faint)' }} />
+                  </button>
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--faint)', padding: '8px 8px 0', lineHeight: 1.5 }}>
+                  Je loopt wijn voor wijn door de kandidaten en bevestigt elke koppeling zelf — er wordt niets automatisch overgenomen.
+                </div>
+              </window.LabeledSection>
+            );
+          })()}
 
           {superadmin && (
             <div style={{ fontSize: 12.5, color: 'var(--faint)', padding: '20px 8px 0', lineHeight: 1.5 }}>
@@ -1433,6 +1667,7 @@ function WineApp({ me }) {
   const [adding, setAdding] = useRootState(false);
   const [editing, setEditing] = useRootState(null);
   const [tab, setTab] = useRootState('kelder');
+  const [vivinoQueue, setVivinoQueue] = useRootState(null);
 
   const wine = window.WINES.find(w => w.id === id) || null;
   const detailOpen = screen === 'detail' && !!wine;
@@ -1446,7 +1681,7 @@ function WineApp({ me }) {
   if (tab === 'kelder') base = <window.ListScreen onOpen={open} onAdd={() => setAdding(true)} onTab={setTab} />;
   else if (tab === 'kasten') base = <window.KastenScreen onOpen={open} onTab={setTab} />;
   else if (tab === 'analyse') base = <window.AnalyseScreen onTab={setTab} />;
-  else base = <window.AccountScreen me={me} onTab={setTab} />;
+  else base = <window.AccountScreen me={me} onTab={setTab} onVivinoAll={() => setVivinoQueue(window.WINES.filter(w => !w.vivinoId))} />;
 
   return (
     <div style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
@@ -1461,8 +1696,15 @@ function WineApp({ me }) {
         {wine && <window.DetailScreen key={wine.id} w={wine}
           onBack={() => setScreen('list')}
           onEdit={(w) => setEditing(w)}
+          onVivino={(w) => setVivinoQueue([w])}
           onDeleted={() => { setScreen('list'); setId(null); refresh(); }} />}
       </div>
+
+      {vivinoQueue && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 90, boxShadow: '0 -10px 40px rgba(0,0,0,0.12)' }}>
+          <window.VivinoSheet key={vivinoQueue.map(w => w.id).join(',')} queue={vivinoQueue} onClose={() => { setVivinoQueue(null); refresh(); }} />
+        </div>
+      )}
 
       <div style={{ position: 'absolute', inset: 0, zIndex: 70, transition: 'transform .4s cubic-bezier(.32,.72,0,1)',
         transform: sheetOpen ? 'translateY(0)' : 'translateY(102%)', pointerEvents: sheetOpen ? 'auto' : 'none',
