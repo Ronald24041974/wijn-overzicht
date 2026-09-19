@@ -64,6 +64,11 @@ def _load_api_handler(path_only):
 
 class DevHandler(SimpleHTTPRequestHandler):
 
+    def end_headers(self):
+        # Statische bestanden nooit cachen tijdens lokaal testen
+        self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
+
     def _dispatch(self):
         self.path = _rewrite(self.path)
         parsed = urlparse(self.path)
