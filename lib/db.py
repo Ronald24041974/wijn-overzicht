@@ -515,7 +515,7 @@ def save_drink_window(wine_id: int, owner_id: int, drink_from, drink_to, reason:
                 number_or_none(drink_from, integer=True),
                 number_or_none(drink_to, integer=True),
                 bool(confirmed),
-                (reason or "").strip()[:200] or None,
+                (reason or "").strip()[:300] or None,
                 int(time.time()),
                 wine_id, owner_id,
             ))
