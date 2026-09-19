@@ -196,7 +196,7 @@ function renderCabinetSetupScreen() {
 async function afterAuth() {
   localStorage.setItem('wijn_session', '1');
   await loadCabinets();
-  if (!isSuperAdmin() && cabinetList.length === 0) {
+  if (currentUser.role === 'admin' && cabinetList.length === 0) {
     renderCabinetSetupScreen();
     return;
   }
@@ -714,6 +714,7 @@ function editorPanel(wine) {
   const scorePct    = wine.score    ? `${(num(wine.score) / 10) * 100}%`                : '0%';
   const isOut       = wine.quantityNow === 0;
   const supActive   = supplierSearch.wineId === wine.id;
+  const admin       = isAdmin();
 
   return `
     <section class="editor-panel">
@@ -753,7 +754,7 @@ function editorPanel(wine) {
         <button class="step-button img-zoom-btn" id="open-zoom" title="Vergroot afbeelding">
           ${iconZoom()}
         </button>
-        ${isAdmin() ? `
+        ${admin ? `
         <div class="img-top-right-btns">
           <button class="step-button img-delete-btn" id="delete-img" title="Afbeelding verwijderen">${iconTrash()}</button>
           <button class="step-button img-picker-btn" id="open-img-picker"
@@ -765,12 +766,12 @@ function editorPanel(wine) {
       ${imagePicker.open && imagePicker.wineId === wine.id ? renderImagePicker(wine) : ''}
 
       <div class="stock-card ${isOut ? 'out-of-stock' : ''}">
-        <button class="step-button" data-step="-1">−</button>
+        <button class="step-button" data-step="-1"${admin ? '' : ' disabled'}>−</button>
         <label>
           Aantal flessen
-          <input id="quantity" inputmode="numeric" pattern="[0-9]*" value="${wine.quantityNow}" />
+          <input id="quantity" inputmode="numeric" pattern="[0-9]*" value="${wine.quantityNow}"${admin ? '' : ' disabled'} />
         </label>
-        <button class="step-button" data-step="1">+</button>
+        <button class="step-button" data-step="1"${admin ? '' : ' disabled'}>+</button>
         <div class="stock-value">
           <span>Totale waarde</span>
           <strong>${euro(wine.valueNow)}</strong>
@@ -790,37 +791,37 @@ function editorPanel(wine) {
 
       ${isOut && supActive ? renderSupplierResults() : ''}
 
-      <form id="edit-form" class="wine-form">
+      <${admin ? 'form id="edit-form"' : 'div'} class="wine-form">
         <input type="hidden" name="rowNumber" value="${wine.rowNumber || ''}" />
 
         ${sectionToggle('Wijngegevens', 'wijngegevens', false)}
         <div class="section-body${isSectionOpen('wijngegevens', false) ? '' : ' section-collapsed'}">
-          ${formField('Naam', 'name', wine.name, true)}
+          ${formField('Naam', 'name', wine.name, true, '', !admin)}
           <div class="form-row">
-            ${formField('Soort', 'type', wine.type)}
-            ${formField('Jaar',  'year', wine.year, false, 'numeric')}
+            ${formField('Soort', 'type', wine.type, false, '', !admin)}
+            ${formField('Jaar',  'year', wine.year, false, 'numeric', !admin)}
           </div>
-          ${selectFormField('Wijnkast', 'cabinet', CABINETS, wine.cabinet || 'Niet ingedeeld')}
-          ${formField('Druifsoort', 'grape', wine.grape)}
+          ${selectFormField('Wijnkast', 'cabinet', CABINETS, wine.cabinet || 'Niet ingedeeld', !admin)}
+          ${formField('Druifsoort', 'grape', wine.grape, false, '', !admin)}
           <div class="form-row">
-            ${formField('Land',  'country', wine.country)}
-            ${formField('Regio', 'region',  wine.region)}
+            ${formField('Land',  'country', wine.country, false, '', !admin)}
+            ${formField('Regio', 'region',  wine.region, false, '', !admin)}
           </div>
         </div>
 
         ${sectionToggle('Waardering & prijs', 'waardering', false)}
         <div class="section-body${isSectionOpen('waardering', false) ? '' : ' section-collapsed'}">
           <div class="form-row">
-            ${formField('Vivino',         'vivino',    wine.vivino,    false, 'decimal')}
-            ${formField('James Suckling', 'suckling',  wine.suckling,  false, 'numeric')}
+            ${formField('Vivino',         'vivino',    wine.vivino,    false, 'decimal', !admin)}
+            ${formField('James Suckling', 'suckling',  wine.suckling,  false, 'numeric', !admin)}
           </div>
           <div class="form-row">
             <label class="form-field">
               Mijn score (1–10)
               <input type="number" name="score" min="1" max="10" step="1"
-                     value="${esc(wine.score ?? '')}" inputmode="numeric" placeholder="—" />
+                     value="${esc(wine.score ?? '')}" inputmode="numeric" placeholder="—"${admin ? '' : ' disabled'} />
             </label>
-            ${formField('Prijs/fles', 'currentPrice', wine.currentPrice, false, 'decimal')}
+            ${formField('Prijs/fles', 'currentPrice', wine.currentPrice, false, 'decimal', !admin)}
           </div>
         </div>
 
@@ -828,32 +829,32 @@ function editorPanel(wine) {
         <div class="section-body${isSectionOpen('notitie', false) ? '' : ' section-collapsed'}">
           <label class="form-field wide">
             Bron / opmerking
-            <textarea name="note">${esc(wine.note || '')}</textarea>
+            <textarea name="note"${admin ? '' : ' disabled'}>${esc(wine.note || '')}</textarea>
           </label>
         </div>
 
         ${sectionToggle('Leverancier', 'leverancier', false)}
         <div class="section-body${isSectionOpen('leverancier', false) ? '' : ' section-collapsed'}">
           <div class="form-row">
-            ${formField('Bedrijfsnaam',   'supplierName',    wine.supplierName    || '')}
-            ${formField('Contactpersoon', 'supplierContact', wine.supplierContact || '')}
+            ${formField('Bedrijfsnaam',   'supplierName',    wine.supplierName    || '', false, '', !admin)}
+            ${formField('Contactpersoon', 'supplierContact', wine.supplierContact || '', false, '', !admin)}
           </div>
           <div class="form-row">
-            ${formField('Telefoonnummer', 'supplierPhone', wine.supplierPhone || '', false, 'tel')}
-            ${formField('E-mailadres',    'supplierEmail', wine.supplierEmail || '', false, 'email')}
+            ${formField('Telefoonnummer', 'supplierPhone', wine.supplierPhone || '', false, 'tel', !admin)}
+            ${formField('E-mailadres',    'supplierEmail', wine.supplierEmail || '', false, 'email', !admin)}
           </div>
           <label class="form-field wide">
             Adresgegevens
-            <input name="supplierAddress" value="${esc(wine.supplierAddress || '')}" />
+            <input name="supplierAddress" value="${esc(wine.supplierAddress || '')}"${admin ? '' : ' disabled'} />
           </label>
         </div>
 
-        ${isAdmin() ? `
+        ${admin ? `
         <div class="form-actions-row">
           <button class="save-button" style="flex:1">Opslaan</button>
           <button type="button" class="danger-button" id="delete-wine" style="flex:1">Verwijder wijn</button>
         </div>` : ''}
-      </form>
+      </${admin ? 'form' : 'div'}>
     </section>
   `;
 }
@@ -1491,21 +1492,21 @@ function analyticsCharts() {
 }
 
 /* Form helpers */
-function formField(label, name, value = '', required = false, inputMode = '') {
+function formField(label, name, value = '', required = false, inputMode = '', disabled = false) {
   const mode = inputMode ? ` inputmode="${inputMode}"` : '';
   return `
     <label class="form-field">
       ${esc(label)}
-      <input name="${name}" value="${esc(value ?? '')}"${mode}${required ? ' required' : ''} />
+      <input name="${name}" value="${esc(value ?? '')}"${mode}${required ? ' required' : ''}${disabled ? ' disabled' : ''} />
     </label>
   `;
 }
 
-function selectFormField(label, name, options, selected) {
+function selectFormField(label, name, options, selected, disabled = false) {
   return `
     <label class="form-field">
       ${esc(label)}
-      <select name="${name}">
+      <select name="${name}"${disabled ? ' disabled' : ''}>
         ${options.map(o => `<option value="${esc(o)}" ${o === selected ? 'selected' : ''}>${esc(o)}</option>`).join('')}
       </select>
     </label>
