@@ -819,6 +819,11 @@ function editorPanel(wine) {
             ${formField('Alcohol %', 'alcohol', wine.alcohol, false, 'decimal', !admin)}
           </div>
           <div class="form-row">
+            ${formField('Drinkvenster van', 'drinkFrom', wine.drinkFrom, false, 'numeric', !admin)}
+            ${formField('Drinkvenster tot', 'drinkTo', wine.drinkTo, false, 'numeric', !admin)}
+          </div>
+          ${drinkStatusLine(wine, admin)}
+          <div class="form-row">
             ${formField('Land',  'country', wine.country, false, '', !admin)}
             ${formField('Regio', 'region',  wine.region, false, '', !admin)}
           </div>
@@ -1067,6 +1072,57 @@ function renderImagePicker(wine) {
       ` : ''}
     </div>
   `;
+}
+
+/* Drinkvenster: oordeel + schatting/bevestigd, met knop om Claude te laten schatten */
+let drinkEstimate = { wineId: null, status: '', error: '' };
+
+function drinkStatusLine(wine, admin) {
+  const now = new Date().getFullYear();
+  const from = wine.drinkFrom || wine.drinkTo, to = wine.drinkTo || wine.drinkFrom;
+  const busy = drinkEstimate.wineId === wine.id && drinkEstimate.status === 'loading';
+  const err  = drinkEstimate.wineId === wine.id && drinkEstimate.status === 'error' ? drinkEstimate.error : '';
+  let text = '', cls = '';
+  if (from) {
+    if (now < from)      { text = `Nog even laten liggen — het venster begint in ${from}.`; cls = 'wait'; }
+    else if (now > to)   { text = `Over het hoogtepunt — het venster liep tot ${to}.`;      cls = 'past'; }
+    else                 { text = `Nu te drinken — het venster loopt tot ${to}.`;            cls = 'now'; }
+  }
+  const estimateBtn = admin && !wine.drinkConfirmed
+    ? `<button type="button" class="ghost-button drink-estimate-btn" id="estimate-drink" ${busy ? 'disabled' : ''}>${busy ? iconSpinner() + ' Schatten…' : (from ? 'Opnieuw schatten' : 'Schat drinkvenster')}</button>`
+    : '';
+  return `
+    <div class="drink-status ${cls}">
+      <div class="drink-status-text">
+        ${from ? `<strong>${esc(text)}</strong>` : `<span>Nog geen drinkvenster.</span>`}
+        ${from ? `<span class="drink-status-badge ${wine.drinkConfirmed ? 'ok' : ''}">${wine.drinkConfirmed ? '✓ Bevestigd' : 'Schatting'}</span>` : ''}
+        ${!wine.drinkConfirmed && wine.drinkReason ? `<span class="drink-status-reason">${esc(wine.drinkReason)}</span>` : ''}
+        ${err ? `<span class="supplier-error">⚠ ${esc(err)}</span>` : ''}
+      </div>
+      ${estimateBtn}
+    </div>
+  `;
+}
+
+async function handleEstimateDrink(wine) {
+  if (!wine) return;
+  drinkEstimate = { wineId: wine.id, status: 'loading', error: '' };
+  render();
+  try {
+    const r = await fetch('/api/lookup?action=drink_window', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rowNumber: wine.rowNumber }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.message || 'Schatten mislukt');
+    wines = data.wines.filter(w => w.name).map(hydrateWine);
+    drinkEstimate = { wineId: null, status: '', error: '' };
+    statusMsg = 'Drinkvenster geschat — bevestig het via opslaan of pas de jaren aan.';
+  } catch (e) {
+    drinkEstimate = { wineId: wine.id, status: 'error', error: e.message };
+  }
+  render();
 }
 
 /* Vivino-koppeling: kandidaten tonen, gebruiker bevestigt — niets automatisch */
@@ -2067,6 +2123,9 @@ function bindEvents() {
   document.querySelector('#find-suppliers')?.addEventListener('click', () => {
     handleFindSuppliers(getSelected());
   });
+
+  /* Drinkvenster schatten */
+  document.querySelector('#estimate-drink')?.addEventListener('click', () => handleEstimateDrink(getSelected()));
 
   /* Vivino-koppeling */
   document.querySelector('#open-vivino-match')?.addEventListener('click', () => {

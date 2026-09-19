@@ -127,6 +127,10 @@ function adaptWine(r) {
     alcohol: (r.alcohol != null) ? Number(r.alcohol) : null,
     vivinoId: r.vivinoWineId || null,
     vivinoCount: r.vivinoRatingsCount || null,
+    drinkVan: r.drinkFrom || null,
+    drinkTot: r.drinkTo || null,
+    drinkBevestigd: !!r.drinkConfirmed,
+    drinkReden: r.drinkReason || '',
     leverancier: {
       naam: r.supplierName || '', contact: r.supplierContact || '',
       tel: r.supplierPhone || '', email: r.supplierEmail || '', adres: r.supplierAddress || '',
@@ -639,6 +643,136 @@ function StockCard({ w }) {
   );
 }
 
+// Drinkvenster: oordeel in gewone taal op basis van het huidige jaar
+function drinkStatus(w, now) {
+  if (!w.drinkVan && !w.drinkTot) return null;
+  const from = w.drinkVan || w.drinkTot, to = w.drinkTot || w.drinkVan;
+  if (now < from) return { key: 'wait', title: 'Nog even laten liggen', sub: `Het venster begint in ${from}.`, color: 'var(--amber-ink)' };
+  if (now > to)   return { key: 'past', title: 'Over het hoogtepunt',   sub: `Het venster liep tot ${to}.`,     color: 'var(--red)' };
+  if (now === to) return { key: 'now',  title: 'Nu te drinken',         sub: 'Dit is het laatste jaar van het venster.', color: 'var(--brand)' };
+  return                 { key: 'now',  title: 'Nu te drinken',         sub: `Het venster loopt tot ${to}.`,     color: 'var(--brand)' };
+}
+window.drinkStatus = drinkStatus;
+
+function DrinkTimeline({ w, now }) {
+  const from = w.drinkVan || w.drinkTot, to = w.drinkTot || w.drinkVan;
+  const left = Math.min(w.jaar || from, from, now), right = Math.max(to, now);
+  const span = Math.max(1, right - left);
+  const pct = (y) => ((y - left) / span) * 100;
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ position: 'relative', height: 4, borderRadius: 2, background: 'var(--fill)', margin: '0 6px' }}>
+        <div style={{ position: 'absolute', left: pct(from) + '%', width: Math.max(1.5, pct(to) - pct(from)) + '%', top: 0, bottom: 0, borderRadius: 2, background: 'var(--gold)' }} />
+        <div style={{ position: 'absolute', left: pct(now) + '%', top: '50%', width: 12, height: 12, borderRadius: 999, background: 'var(--ink)', transform: 'translate(-50%, -50%)', boxShadow: '0 0 0 3px var(--surface)' }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
+        <span>{left}</span><span>{right}</span>
+      </div>
+    </div>
+  );
+}
+
+function DrinkWindowCard({ w }) {
+  const admin = window.IS_ADMIN;
+  const now = new Date().getFullYear();
+  const st = drinkStatus(w, now);
+  const [busy, setBusy] = useSt(false);
+  const [edit, setEdit] = useSt(false);
+  const [van, setVan] = useSt('');
+  const [tot, setTot] = useSt('');
+  const [err, setErr] = useSt('');
+
+  const refresh = (data) => {
+    if (data && data.wines) window.WINES = data.wines.map(window.adaptWine);
+    if (window.__refresh) window.__refresh();
+  };
+  const estimate = async (force) => {
+    if (busy) return;
+    setBusy(true); setErr('');
+    try {
+      const r = await window.fetchJSON('/api/lookup?action=drink_window', { method: 'POST', body: JSON.stringify({ rowNumber: w.rowNumber, force: !!force }) });
+      if (!r.ok) throw new Error(r.data.message || 'Schatten mislukt.');
+      refresh(r.data);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  const save = async (payload) => {
+    if (busy) return;
+    setBusy(true); setErr('');
+    try { await window.patchWine({ rowNumber: w.rowNumber, ...payload }); setEdit(false); refresh(); }
+    catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  const openEdit = () => { setVan(w.drinkVan || ''); setTot(w.drinkTot || ''); setErr(''); setEdit(true); };
+
+  const textBtn = (label, on, opts = {}) => (
+    <button onClick={on} disabled={busy} className="tap" style={{ border: 'none', background: 'none', padding: '6px 2px', cursor: 'pointer', fontFamily: 'inherit',
+      fontSize: 13.5, fontWeight: 590, color: opts.muted ? 'var(--muted)' : 'var(--brand)', opacity: busy ? 0.5 : 1 }}>{label}</button>
+  );
+  const inputStyle = { width: '100%', border: 'none', borderBottom: '0.5px solid var(--sep)', background: 'none', outline: 'none', fontSize: 17, fontWeight: 600, color: 'var(--ink)', fontFamily: 'inherit', padding: '8px 0', textAlign: 'center' };
+
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 18, boxShadow: 'var(--shadow), var(--hair)' }}>
+        <span style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)' }}>Drinkvenster</span>
+
+        {edit ? (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ display: 'flex', gap: 18, alignItems: 'flex-end' }}>
+              <label style={{ flex: 1, fontSize: 12, color: 'var(--muted)' }}>Van
+                <input value={van} onChange={e => setVan(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder={String(now)} style={inputStyle} /></label>
+              <label style={{ flex: 1, fontSize: 12, color: 'var(--muted)' }}>Tot
+                <input value={tot} onChange={e => setTot(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder={String(now + 5)} style={inputStyle} /></label>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+              <div style={{ display: 'flex', gap: 14 }}>
+                {textBtn('Opslaan', () => save({ drinkFrom: van || '', drinkTo: tot || '' }))}
+                {textBtn('Annuleren', () => setEdit(false), { muted: true })}
+              </div>
+              {(w.drinkVan || w.drinkTot) && textBtn('Wissen', () => save({ drinkFrom: '', drinkTo: '' }), { muted: true })}
+            </div>
+          </div>
+        ) : st ? (
+          <>
+            <div style={{ fontSize: 21, fontWeight: 680, letterSpacing: -0.4, color: st.color, marginTop: 8, lineHeight: 1.2 }}>{st.title}</div>
+            <div style={{ fontSize: 14, color: 'var(--muted)', marginTop: 4 }}>{st.sub}</div>
+            <DrinkTimeline w={w} now={now} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 14, paddingTop: 12, borderTop: '0.5px solid var(--sep)' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 590, color: w.drinkBevestigd ? 'var(--brand)' : 'var(--muted)' }}>
+                {w.drinkBevestigd && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>}
+                {w.drinkBevestigd ? 'Drinkvenster bevestigd' : 'Drinkvenster schatting'}
+              </span>
+              {admin && (
+                <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
+                  {!w.drinkBevestigd && textBtn('Bevestigen', () => save({ drinkFrom: w.drinkVan, drinkTo: w.drinkTot, drinkConfirmed: true }))}
+                  {textBtn('Aanpassen', openEdit, { muted: w.drinkBevestigd ? false : true })}
+                  {!w.drinkBevestigd && textBtn(busy ? 'Schatten…' : 'Opnieuw', () => estimate(false), { muted: true })}
+                </div>
+              )}
+            </div>
+            {!w.drinkBevestigd && w.drinkReden && (
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 8, lineHeight: 1.45 }}>{w.drinkReden}</div>
+            )}
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 15, color: 'var(--muted)', marginTop: 8, lineHeight: 1.45 }}>Nog geen drinkvenster.</div>
+            {admin && (
+              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                <button onClick={() => estimate(false)} disabled={busy} className="tap" style={{ flex: 1, padding: '10px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                  background: 'var(--brand)', color: '#fff', fontSize: 13.5, fontWeight: 590, opacity: busy ? 0.6 : 1 }}>{busy ? 'Schatten…' : 'Laat schatten'}</button>
+                <button onClick={openEdit} disabled={busy} className="tap" style={{ flex: 1, padding: '10px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                  background: 'var(--fill)', color: 'var(--ink)', fontSize: 13.5, fontWeight: 590 }}>Zelf invullen</button>
+              </div>
+            )}
+          </>
+        )}
+        {err && <div style={{ fontSize: 12.5, color: 'var(--red)', marginTop: 8 }}>{err}</div>}
+      </div>
+    </div>
+  );
+}
+
 function SupplierList({ w }) {
   return (
     <div style={{ marginTop: 14 }}>
@@ -742,6 +876,7 @@ function DetailScreen({ w, onBack, onEdit, onDeleted, onVivino }) {
         </div>
 
         <div style={{ padding: '0 22px' }}>
+          <DrinkWindowCard w={w} />
           <StockCard w={w} />
 
           <window.GroupSection title="Wijngegevens" rows={[
@@ -995,6 +1130,93 @@ function VivinoSheet({ queue, onClose }) {
 }
 
 window.VivinoSheet = VivinoSheet;
+
+// Schat drinkvensters voor een rij wijnen, één voor één; resultaten worden als schatting opgeslagen.
+function DrinkWindowRunner({ queue, onClose }) {
+  const [idx, setIdx] = useVv(0);
+  const [results, setResults] = useVv([]);
+  const stopRef = React.useRef(false);
+  const total = queue.length;
+  const running = idx < total && !stopRef.current;
+
+  useVvEffect(() => {
+    let alive = true;
+    (async () => {
+      for (let i = 0; i < total; i++) {
+        if (stopRef.current || !alive) break;
+        setIdx(i);
+        const w = queue[i];
+        try {
+          const r = await window.fetchJSON('/api/lookup?action=drink_window', { method: 'POST', body: JSON.stringify({ rowNumber: w.rowNumber }) });
+          if (!alive) break;
+          if (!r.ok) throw new Error(r.data.message || 'Schatten mislukt');
+          if (r.data.wines) window.WINES = r.data.wines.map(window.adaptWine);
+          const nw = r.data.wine || {};
+          setResults(rs => [{ w, ok: true, van: nw.drinkFrom, tot: nw.drinkTo }, ...rs]);
+        } catch (e) {
+          if (!alive) break;
+          setResults(rs => [{ w, ok: false, err: e.message }, ...rs]);
+        }
+      }
+      if (alive) { setIdx(total); if (window.__refresh) window.__refresh(); }
+    })();
+    return () => { alive = false; stopRef.current = true; };
+  }, []);
+
+  const doneCount = results.length;
+  const current = running ? queue[idx] : null;
+
+  return (
+    <div style={{ position: 'relative', height: '100%', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '50px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--faint)' }}>{doneCount} van {total}</div>
+          <div style={{ fontSize: 22, fontWeight: 680, letterSpacing: -0.5, color: 'var(--ink)', marginTop: 3 }}>Drinkvensters schatten</div>
+        </div>
+        <window.GlassBtn onClick={onClose}><window.IcX size={18} /></window.GlassBtn>
+      </div>
+      <div style={{ margin: '0 18px', height: 4, borderRadius: 2, background: 'var(--fill)', overflow: 'hidden', flexShrink: 0 }}>
+        <div style={{ width: (doneCount / Math.max(1, total)) * 100 + '%', height: '100%', background: 'var(--gold)', transition: 'width .3s' }} />
+      </div>
+
+      <div className="scroll" style={{ flex: 1, overflowY: 'auto', padding: '14px 18px 24px' }}>
+        {current && (
+          <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 14, display: 'flex', gap: 14, alignItems: 'center', boxShadow: 'var(--shadow), var(--hair)', marginBottom: 14 }}>
+            <window.WineThumb w={current} h={52} label year={current.jaar} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{current.naam}</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>Schatten…</div>
+            </div>
+          </div>
+        )}
+        {!running && (
+          <div style={{ fontSize: 14, color: 'var(--muted)', padding: '4px 6px 12px', lineHeight: 1.5 }}>
+            {stopRef.current && idx < total ? 'Gestopt. ' : 'Klaar. '}
+            {results.filter(r => r.ok).length} geschat · {results.filter(r => !r.ok).length} mislukt. Alles staat als <b>schatting</b>; bevestigen doe je per wijn op de detailpagina.
+          </div>
+        )}
+        {results.length > 0 && (
+          <div style={{ background: 'var(--surface)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow), var(--hair)' }}>
+            {results.map((r, i) => (
+              <div key={r.w.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', minHeight: 46, borderTop: i ? '0.5px solid var(--sep)' : 'none' }}>
+                <span style={{ flex: 1, fontSize: 14.5, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.w.naam}{r.w.jaar ? ` ${r.w.jaar}` : ''}</span>
+                <span style={{ fontSize: 14.5, fontWeight: 590, color: r.ok ? 'var(--ink)' : 'var(--red)', flexShrink: 0 }}>{r.ok ? `${r.van}–${r.tot}` : 'mislukt'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ flexShrink: 0, padding: '12px 18px calc(18px + env(safe-area-inset-bottom, 0px))', background: 'var(--bg)', borderTop: '0.5px solid var(--sep)' }}>
+        <button onClick={() => { if (running) { stopRef.current = true; setIdx(i => i); } else onClose(); }} className="tap" style={{ width: '100%', padding: '14px', borderRadius: 13, border: 'none', cursor: 'pointer',
+          fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, background: running ? 'var(--surface)' : 'var(--brand)', color: running ? 'var(--ink)' : '#fff', boxShadow: running ? 'var(--shadow), var(--hair)' : 'none' }}>
+          {running ? 'Stoppen na deze wijn' : 'Sluiten'}
+        </button>
+      </div>
+    </div>
+  );
+}
+window.DrinkWindowRunner = DrinkWindowRunner;
   </script>
 
   <!-- ───────────────────────── nieuwe fles / bewerken ───────────────────────── -->
@@ -1453,7 +1675,7 @@ function SuperadminUserPicker() {
   );
 }
 
-function AccountScreen({ me, onTab, onVivinoAll }) {
+function AccountScreen({ me, onTab, onVivinoAll, onDrinkAll }) {
   const admin = me && (me.role === 'admin' || me.role === 'superadmin');
   const superadmin = me && me.role === 'superadmin';
   const username = (me && me.username) || '';
@@ -1524,24 +1746,30 @@ function AccountScreen({ me, onTab, onVivinoAll }) {
           </window.LabeledSection>
 
           {window.IS_ADMIN && (() => {
-            const open = window.WINES.filter(w => !w.vivinoId).length;
+            const openVivino = window.WINES.filter(w => !w.vivinoId).length;
+            const openDrink = window.WINES.filter(w => !w.drinkVan && !w.drinkTot).length;
+            const wijnen = (n) => `${n} ${n === 1 ? 'wijn' : 'wijnen'}`;
+            const row = (icon, title, sub, n, on, border) => (
+              <button onClick={() => n && on && on()} disabled={!n} className="tap"
+                style={{ width: '100%', ...rowBase, border: 'none', borderTop: border ? '0.5px solid var(--sep)' : 'none', background: 'none', cursor: n ? 'pointer' : 'default', fontFamily: 'inherit', opacity: n ? 1 : 0.6 }}>
+                {icon}
+                <span style={{ flex: 1, textAlign: 'left' }}>
+                  <span style={{ display: 'block', fontSize: 15, color: 'var(--ink)', fontWeight: 500 }}>{title}</span>
+                  <span style={{ display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{sub}</span>
+                </span>
+                <window.IcChevR size={16} style={{ color: 'var(--faint)' }} />
+              </button>
+            );
             return (
               <window.LabeledSection label="Kelder verrijken">
                 <div className="add-group">
-                  <button onClick={() => open && onVivinoAll && onVivinoAll()} disabled={!open} className="tap"
-                    style={{ width: '100%', ...rowBase, border: 'none', background: 'none', cursor: open ? 'pointer' : 'default', fontFamily: 'inherit', opacity: open ? 1 : 0.6 }}>
-                    <window.IcStar size={18} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-                    <span style={{ flex: 1, textAlign: 'left' }}>
-                      <span style={{ display: 'block', fontSize: 15, color: 'var(--ink)', fontWeight: 500 }}>Vivino-matching starten</span>
-                      <span style={{ display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
-                        {open ? `${open} ${open === 1 ? 'wijn' : 'wijnen'} nog zonder koppeling` : 'Alle wijnen zijn gekoppeld'}
-                      </span>
-                    </span>
-                    <window.IcChevR size={16} style={{ color: 'var(--faint)' }} />
-                  </button>
+                  {row(<window.IcStar size={18} style={{ color: 'var(--gold)', flexShrink: 0 }} />, 'Vivino-matching starten',
+                    openVivino ? `${wijnen(openVivino)} nog zonder koppeling` : 'Alle wijnen zijn gekoppeld', openVivino, onVivinoAll, false)}
+                  {row(<window.TabChart size={18} style={{ color: 'var(--brand)', flexShrink: 0 }} />, 'Drinkvensters schatten',
+                    openDrink ? `${wijnen(openDrink)} nog zonder drinkvenster` : 'Alle wijnen hebben een drinkvenster', openDrink, onDrinkAll, true)}
                 </div>
                 <div style={{ fontSize: 12.5, color: 'var(--faint)', padding: '8px 8px 0', lineHeight: 1.5 }}>
-                  Je loopt wijn voor wijn door de kandidaten en bevestigt elke koppeling zelf — er wordt niets automatisch overgenomen.
+                  Vivino-koppelingen bevestig je één voor één. Drinkvensters worden als <b>schatting</b> opgeslagen en overschrijven nooit een venster dat je zelf hebt bevestigd of ingevuld.
                 </div>
               </window.LabeledSection>
             );
@@ -1668,6 +1896,7 @@ function WineApp({ me }) {
   const [editing, setEditing] = useRootState(null);
   const [tab, setTab] = useRootState('kelder');
   const [vivinoQueue, setVivinoQueue] = useRootState(null);
+  const [drinkQueue, setDrinkQueue] = useRootState(null);
 
   const wine = window.WINES.find(w => w.id === id) || null;
   const detailOpen = screen === 'detail' && !!wine;
@@ -1681,7 +1910,9 @@ function WineApp({ me }) {
   if (tab === 'kelder') base = <window.ListScreen onOpen={open} onAdd={() => setAdding(true)} onTab={setTab} />;
   else if (tab === 'kasten') base = <window.KastenScreen onOpen={open} onTab={setTab} />;
   else if (tab === 'analyse') base = <window.AnalyseScreen onTab={setTab} />;
-  else base = <window.AccountScreen me={me} onTab={setTab} onVivinoAll={() => setVivinoQueue(window.WINES.filter(w => !w.vivinoId))} />;
+  else base = <window.AccountScreen me={me} onTab={setTab}
+    onVivinoAll={() => setVivinoQueue(window.WINES.filter(w => !w.vivinoId))}
+    onDrinkAll={() => setDrinkQueue(window.WINES.filter(w => !w.drinkVan && !w.drinkTot))} />;
 
   return (
     <div style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
@@ -1703,6 +1934,11 @@ function WineApp({ me }) {
       {vivinoQueue && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 90, boxShadow: '0 -10px 40px rgba(0,0,0,0.12)' }}>
           <window.VivinoSheet key={vivinoQueue.map(w => w.id).join(',')} queue={vivinoQueue} onClose={() => { setVivinoQueue(null); refresh(); }} />
+        </div>
+      )}
+      {drinkQueue && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 90, boxShadow: '0 -10px 40px rgba(0,0,0,0.12)' }}>
+          <window.DrinkWindowRunner key={drinkQueue.map(w => w.id).join(',')} queue={drinkQueue} onClose={() => { setDrinkQueue(null); refresh(); }} />
         </div>
       )}
 

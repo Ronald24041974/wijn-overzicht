@@ -3,8 +3,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from urllib.parse import urlparse, parse_qs
 from lib.auth import require_admin
 from lib.helpers import BaseHandler, get_anthropic_client, message_text, MODEL_FAST
-from lib.db import ensure_wines_columns, resolve_owner_id, get_wine_row, apply_vivino_match, load_wines
+from lib.db import ensure_wines_columns, resolve_owner_id, get_wine_row, apply_vivino_match, save_drink_window, load_wines
 from lib.vivino import find_candidates
+from lib.drinkwindow import estimate_drink_window
 
 
 def _lookup_wine(name: str) -> dict:
@@ -60,6 +61,8 @@ class handler(BaseHandler):
                 self._vivino_search(data, username, role)
             elif action == "vivino_apply":
                 self._vivino_apply(data, username, role)
+            elif action == "drink_window":
+                self._drink_window(data, username, role)
             else:
                 name = (data.get("name") or "").strip()
                 if not name:
@@ -93,4 +96,16 @@ class handler(BaseHandler):
             self.json_response(400, {"message": "Geen kandidaat gekozen."})
             return
         updated = apply_vivino_match(wine["rowNumber"], owner_id, cand)
+        self.json_response(200, {"wine": updated, "wines": load_wines(owner_id)})
+
+    def _drink_window(self, data, username, role):
+        """Schat het drinkvenster en slaat het op als schatting. Een door de gebruiker
+        bevestigd venster wordt nooit overschreven, tenzij expliciet force=true."""
+        wine, owner_id = self._wine_for(data, username, role)
+        if not wine: return
+        if wine.get("drinkConfirmed") and not data.get("force"):
+            self.json_response(409, {"message": "Drinkvenster is al bevestigd."})
+            return
+        est = estimate_drink_window(wine)
+        updated = save_drink_window(wine["rowNumber"], owner_id, est["drinkFrom"], est["drinkTo"], est["reason"], confirmed=False)
         self.json_response(200, {"wine": updated, "wines": load_wines(owner_id)})
