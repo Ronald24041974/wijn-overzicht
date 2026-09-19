@@ -824,9 +824,9 @@ function VivinoCandidate({ c, w, selected, onSelect }) {
     <button onClick={onSelect} className="tap" style={{ width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
       background: 'var(--surface)', borderRadius: 16, padding: 14, display: 'flex', gap: 14, alignItems: 'flex-start',
       border: selected ? '1.5px solid var(--brand)' : '1.5px solid transparent', boxShadow: 'var(--shadow), var(--hair)' }}>
-      <div style={{ width: 44, height: 72, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {c.imageUrl ? <img src={c.imageUrl} alt="" style={{ maxHeight: 72, maxWidth: 44, objectFit: 'contain' }} onError={e => { e.currentTarget.style.visibility = 'hidden'; }} />
-          : <window.Bottle soort={c.type || w.soort} h={64} />}
+      <div style={{ width: 28, height: 48, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {c.imageUrl ? <img src={c.imageUrl} alt="" style={{ height: 48, width: 'auto', maxWidth: 28, objectFit: 'contain', display: 'block' }} onError={e => { e.currentTarget.style.visibility = 'hidden'; }} />
+          : <window.Bottle soort={c.type || w.soort} h={44} />}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 15.5, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.25 }}>{c.name}</div>

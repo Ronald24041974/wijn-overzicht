@@ -2390,8 +2390,8 @@ h1, h2, h3, p { margin: 0; }
 }
 .vivino-cand:hover { border-color: rgba(33,63,57,.35); }
 .vivino-cand.selected { border-color: var(--c-brand); box-shadow: 0 0 0 2px rgba(33,63,57,.12); }
-.vivino-cand-img { width: 36px; height: 60px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-.vivino-cand-img img { max-height: 60px; max-width: 36px; object-fit: contain; }
+.vivino-cand-img { width: 26px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.vivino-cand-img img { height: 44px; width: auto; max-width: 26px; object-fit: contain; display: block; }
 .vivino-cand-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .vivino-cand-body strong { font-size: 0.9rem; line-height: 1.25; }
 .vivino-cand-meta { font-size: 0.76rem; color: var(--c-muted); }
