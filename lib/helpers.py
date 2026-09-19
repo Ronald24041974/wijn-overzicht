@@ -50,12 +50,32 @@ def sanitize_filename(name: str) -> str:
     return name[:80]
 
 
+MODEL_FAST = "claude-haiku-4-5"
+MODEL_SMART = "claude-sonnet-5"
+
+# Sonnet 5 denkt standaard adaptief mee en die tokens tellen mee in max_tokens;
+# daarom ruime limiet + expliciet effort, anders wordt de JSON afgekapt.
+# Web search: blijf bij web_search_20250305 — de 20260209-variant liep hier
+# structureel tegen de 90s+ timeout aan (te traag voor een Vercel-functie).
+SMART_OPTS = {
+    "max_tokens": 8000,
+    "thinking": {"type": "adaptive"},
+    "output_config": {"effort": "medium"},
+}
+
+
 def get_anthropic_client():
     import anthropic
     key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not key or len(key) < 20:
         raise ValueError("ANTHROPIC_API_KEY ontbreekt of is ongeldig.")
     return anthropic.Anthropic(api_key=key)
+
+
+def message_text(message) -> str:
+    return "".join(
+        block.text for block in message.content if getattr(block, "type", "") == "text"
+    ).strip()
 
 
 def download_image(url: str) -> bytes | None:

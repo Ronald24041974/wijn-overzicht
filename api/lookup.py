@@ -1,7 +1,7 @@
 import sys, os, json, re
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.auth import require_admin
-from lib.helpers import BaseHandler, get_anthropic_client
+from lib.helpers import BaseHandler, get_anthropic_client, message_text, MODEL_FAST
 
 
 def _lookup_wine(name: str) -> dict:
@@ -31,11 +31,11 @@ Regels:
 - note: beknopte tasting note of herkomstbeschrijving"""
 
     message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=MODEL_FAST,
         max_tokens=512,
         messages=[{"role": "user", "content": prompt}],
     )
-    text = message.content[0].text.strip()
+    text = message_text(message)
     if "```" in text:
         parts = text.split("```")
         text = parts[1] if len(parts) > 1 else parts[0]

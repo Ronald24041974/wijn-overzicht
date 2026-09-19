@@ -1,7 +1,7 @@
 import sys, os, re, json, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.auth import check_auth
-from lib.helpers import BaseHandler, vivino_search_html, download_image, get_anthropic_client, sanitize_filename
+from lib.helpers import BaseHandler, vivino_search_html, download_image, get_anthropic_client, sanitize_filename, MODEL_SMART, SMART_OPTS
 from lib.db import get_db, ensure_wines_columns, resolve_owner_id, get_wine_owner
 from lib.image import remove_background, has_transparency, normalize_transparent
 from urllib.parse import urlparse, parse_qs, quote
@@ -25,8 +25,8 @@ def _find_online_and_store_proposed(wine_id: str, name: str, wine_type: str, yea
     search_label = f"{name}{year_part} {type_hint}".strip()
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=512,
+            model=MODEL_SMART,
+            **SMART_OPTS,
             tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
             messages=[{"role": "user", "content": (
                 f'Zoek een PRODUCTFOTO van de wijnfles "{search_label}" '
