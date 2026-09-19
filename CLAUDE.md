@@ -149,6 +149,57 @@ gebruiker heeft een eigen, geïsoleerde kelder.
 
 ---
 
+## Claude API-aanroepen (modellen centraal)
+
+Alle modelkeuzes staan in **`lib/helpers.py`** — nooit hardcoden in `api/*.py`:
+- `MODEL_FAST = "claude-haiku-4-5"` — snelle tekst-taken zonder web search (`lookup.py`,
+  `find_suppliers.py`).
+- `MODEL_SMART = "claude-sonnet-5"` — etiket-scan (vision) en alles met web search
+  (`scan_wine_label.py`, `fetch_suckling.py`, `wine_images.py`).
+- `SMART_OPTS` — `max_tokens=8000`, `thinking={"type":"adaptive"}`, `effort="medium"`. Sonnet 5
+  denkt standaard mee en die tokens tellen mee in `max_tokens`; met de oude limieten (200–600)
+  werd de JSON afgekapt. Gebruik altijd `**SMART_OPTS` bij Sonnet-aanroepen.
+- `message_text(resp)` — leest alle text-blocks; `resp.content[0].text` is fout (kan een
+  thinking-block zijn).
+- Web search: **`web_search_20250305`** blijven gebruiken. De nieuwere `web_search_20260209`
+  (dynamic filtering) is getest en liep structureel tegen 90s+ timeouts — onbruikbaar op Vercel.
+- SDK-pin `anthropic==1.7.0` (Python ≥ 3.10). Bij een model-update: alleen de constanten
+  aanpassen en één rooktest draaien (zie `/claude-api migrate` voor breekpunten).
+
+---
+
+## Vivino-koppeling (handmatig, altijd met bevestiging)
+
+Sinds `feature/vivino-matching` (live 2026-09-19). Ontwerpkeuzes van de gebruiker: **niets
+automatisch, geen cron** — koppelen gebeurt alleen op een expliciete actie en per wijn bevestigd.
+
+- **`lib/vivino.py`** — `find_candidates(name, year, type)` doet **één** POST naar de publieke
+  Algolia-zoekindex van vivino.com (`WINES_prod`, search-only sleutel uit hun client-JS; geen
+  login, vivino.com zelf wordt niet aangeroepen). Willekeurige pauze 0,3–0,8 s vóór elk request.
+  Levert max. 3 kandidaten met `winery`, `region`, `country` (NL), `type`, `alcohol`,
+  `yearMatch`/`typeMatch`, score op **jaargang-niveau** als die bestaat (`ratingSource`
+  "jaargang"), anders wijnbreed. Kandidaten met kloppend jaar én type staan bovenaan.
+- **API** — geen nieuwe Vercel-functie: `POST /api/lookup?action=vivino_search`
+  (`{rowNumber}` → `{wine, candidates}`) en `POST /api/lookup?action=vivino_apply`
+  (`{rowNumber, candidate}` → `{wine, wines}`). Beide `require_admin`, owner-check via
+  `get_wine_row`.
+- **DB** — kolommen `producer`, `alcohol`, `vivino_wine_id`, `vivino_vintage_id`,
+  `vivino_ratings_count` (via `ensure_wines_columns()`). `apply_vivino_match()` overschrijft
+  score/producent/alcohol met de gekozen kandidaat; `region`/`country` alleen als ze leeg waren.
+  SELECT-kolommen staan centraal in `WINE_COLS`.
+- **Redesign** — knop "Koppel met Vivino" op de detailpagina (`VivinoSheet`, één wijn) en
+  Account → "Kelder verrijken → Vivino-matching starten" (zelfde sheet, loopt door alle wijnen
+  zonder `vivinoWineId`, kies/overslaan per wijn; de front-end doet dat wijn-voor-wijn zodat het
+  tempo natuurlijk blijft en Vercel's tijdslimiet niet geraakt wordt).
+- **Klassieke app** — "★ Koppel met Vivino" boven het formulier met hetzelfde kandidatenpaneel;
+  `producer` en `alcohol` zijn er bewerkbare velden.
+- Vivino levert ook smaakstructuur/aroma's (`/api/wines/{id}/tastes`) — nog niet opgeslagen;
+  kandidaat voor wijn-spijsadvies later.
+- Voor experimenten in Claude Code is de `vivino` MCP-server lokaal geregistreerd
+  (`claude mcp get vivino`; `~/.local/py311/bin/vivino-mcp`, vereist `mcp<2`).
+
+---
+
 ## Lokale dev-server
 
 ```bash
@@ -160,7 +211,14 @@ python3 dev_server.py   # poort 3000 — zie Python-versie-waarschuwing hieronde
 - Oude app: `http://localhost:3000/`
 - Redesign: `http://localhost:3000/kelder.html` (op localhost draait de host-rewrite niet, dus altijd via het pad)
 
-Vereist in `.env`: `DATABASE_URL`, `ANTHROPIC_API_KEY`
+Vereist in `.env`: `DATABASE_URL`, `ANTHROPIC_API_KEY`. De lokale `.env` komt van
+`vercel env pull` (waarden tussen aanhalingstekens) — `dev_server.py` stript die. De dev-server
+stuurt `Cache-Control: no-store` voor statische bestanden; `index.html` laadt `styles.css`/`app.js`
+met een `?v=`-versieparameter — **verhoog die bij CSS/JS-wijzigingen** in de klassieke app.
+
+Let op: `dev_server.py` cachet Python-modules (`importlib.import_module`) — na wijzigingen in
+`lib/` of `api/` de server **herstarten**. Draait er nog een oude server op poort 3000 (van een
+eerdere sessie), dan houdt die oude code én oude SDK in het geheugen.
 
 ⚠️ **Python-versie:** de code gebruikt `X | None`-type-hints (3.10+-syntax), maar het systeem-
 `python3` op deze Mac is 3.9.6 — `dev_server.py` crasht daarmee bij het importeren van `lib/db.py`.
@@ -202,3 +260,5 @@ zijn daarom samengevoegd tot **`api/wine_photo.py`** (`?variant=thumb|full` quer
 `vercel.json`-rewrites `/api/wine-thumb`/`/api/wine-image` wijzen daar nu naartoe). We zitten nu
 precies op **12 functies** — een nieuwe route toevoegen vereist eerst weer twee bestaande te
 mergen, of een bestaande route uit te breiden met een actie/variant-param (zoals hier).
+Voorbeelden van dat laatste: `api/auth.py?action=…`, `api/proposed_action.py?action=…`,
+`api/lookup.py?action=vivino_search|vivino_apply`.
