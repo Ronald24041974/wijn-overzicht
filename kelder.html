@@ -131,6 +131,7 @@ function adaptWine(r) {
     drinkTot: r.drinkTo || null,
     drinkBevestigd: !!r.drinkConfirmed,
     drinkReden: r.drinkReason || '',
+    spijs: Array.isArray(r.pairings) ? r.pairings : [],
     leverancier: {
       naam: r.supplierName || '', contact: r.supplierContact || '',
       tel: r.supplierPhone || '', email: r.supplierEmail || '', adres: r.supplierAddress || '',
@@ -810,7 +811,57 @@ function SupplierList({ w }) {
   );
 }
 
-function DetailScreen({ w, onBack, onEdit, onDeleted, onVivino }) {
+function PairingSection({ w, onPairing }) {
+  const admin = window.IS_ADMIN;
+  const [busyId, setBusyId] = useSt(null);
+  const remove = async (p) => {
+    if (busyId || !window.confirm(`"${p.dish}" verwijderen bij deze wijn?`)) return;
+    setBusyId(p.id);
+    try {
+      const r = await window.fetchJSON('/api/lookup?action=pairing_delete', { method: 'POST', body: JSON.stringify({ rowNumber: w.rowNumber, pairingId: p.id }) });
+      if (!r.ok) throw new Error(r.data.message || 'Verwijderen mislukt');
+      if (r.data.wines) window.WINES = r.data.wines.map(window.adaptWine);
+      if (window.__refresh) window.__refresh();
+    } catch (e) { alert(e.message); }
+    setBusyId(null);
+  };
+  if (!admin && !w.spijs.length) return null;
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px 8px' }}>
+        <span style={{ fontSize: 12, fontWeight: 590, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)' }}>Spijs</span>
+        {admin && (
+          <button onClick={() => onPairing && onPairing(w)} className="tap" style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 590, color: 'var(--brand)' }}>
+            {w.spijs.length ? 'Meer advies' : 'Spijsadvies vragen'}
+          </button>
+        )}
+      </div>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow), var(--hair)' }}>
+        {w.spijs.length === 0 && (
+          <button onClick={() => onPairing && onPairing(w)} className="tap" style={{ width: '100%', border: 'none', background: 'none', padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+            <div style={{ fontSize: 15, color: 'var(--ink)', fontWeight: 500 }}>Wat eet je hierbij?</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3, lineHeight: 1.45 }}>Vraag een sommelier-advies met jouw voorkeuren en bewaar wat past.</div>
+          </button>
+        )}
+        {w.spijs.map((p, i) => (
+          <div key={p.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', borderTop: i ? '0.5px solid var(--sep)' : 'none' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 590, color: 'var(--ink)', lineHeight: 1.3 }}>{p.dish}</div>
+              {p.why && <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3, lineHeight: 1.45 }}>{p.why}</div>}
+            </div>
+            {admin && (
+              <button onClick={() => remove(p)} className="tap" style={{ border: 'none', background: 'none', padding: 4, cursor: 'pointer', color: 'var(--faint)', opacity: busyId === p.id ? 0.4 : 1 }}>
+                <window.IcX size={15} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DetailScreen({ w, onBack, onEdit, onDeleted, onVivino, onPairing }) {
   const [zoom, setZoom] = useSt(false);
   const [deleting, setDeleting] = useSt(false);
   const t = window.TYPE[w.soort] || window.TYPE.Rood;
@@ -889,6 +940,7 @@ function DetailScreen({ w, onBack, onEdit, onDeleted, onVivino }) {
             ['James Suckling', w.js ? w.js + ' /100' : '—'],
             ['Mijn score', (w.mijn || 0) + ' /10'], ['Inkoopprijs', window.fmtEur(w.inkoop)], ['Prijs per fles', window.fmtEur(w.prijs)],
           ]} />
+          <PairingSection w={w} onPairing={onPairing} />
           {w.notitie && (
             <window.GroupSection title="Notitie" defaultOpen={true} rows={[['', w.notitie, 'var(--ink)', true]]} />
           )}
@@ -1131,92 +1183,134 @@ function VivinoSheet({ queue, onClose }) {
 
 window.VivinoSheet = VivinoSheet;
 
-// Schat drinkvensters voor een rij wijnen, één voor één; resultaten worden als schatting opgeslagen.
-function DrinkWindowRunner({ queue, onClose }) {
-  const [idx, setIdx] = useVv(0);
-  const [results, setResults] = useVv([]);
-  const stopRef = React.useRef(false);
-  const total = queue.length;
-  const running = idx < total && !stopRef.current;
+// Spijsadvies als gesprek over één wijn: voorkeuren → 3 gerechten → bijsturen → bewaren.
+const PAIRING_CHIPS = ['Vegetarisch', 'Vis', 'Vlees', 'Gevogelte', 'Kaas', 'Italiaans', 'Frans', 'Aziatisch', 'Snel & simpel', 'Feestelijk', 'Zomers', 'Winters'];
 
-  useVvEffect(() => {
-    let alive = true;
-    (async () => {
-      for (let i = 0; i < total; i++) {
-        if (stopRef.current || !alive) break;
-        setIdx(i);
-        const w = queue[i];
-        try {
-          const r = await window.fetchJSON('/api/lookup?action=drink_window', { method: 'POST', body: JSON.stringify({ rowNumber: w.rowNumber }) });
-          if (!alive) break;
-          if (!r.ok) throw new Error(r.data.message || 'Schatten mislukt');
-          if (r.data.wines) window.WINES = r.data.wines.map(window.adaptWine);
-          const nw = r.data.wine || {};
-          setResults(rs => [{ w, ok: true, van: nw.drinkFrom, tot: nw.drinkTo }, ...rs]);
-        } catch (e) {
-          if (!alive) break;
-          setResults(rs => [{ w, ok: false, err: e.message }, ...rs]);
-        }
-      }
-      if (alive) { setIdx(total); if (window.__refresh) window.__refresh(); }
-    })();
-    return () => { alive = false; stopRef.current = true; };
-  }, []);
+function PairingSheet({ wineId, onClose }) {
+  const w = window.WINES.find(x => x.id === wineId);
+  const [chips, setChips] = useVv([]);
+  const [input, setInput] = useVv('');
+  const [messages, setMessages] = useVv([]);
+  const [turns, setTurns] = useVv([]);
+  const [busy, setBusy] = useVv(false);
+  const [savingDish, setSavingDish] = useVv(null);
+  const [err, setErr] = useVv('');
+  const bottomRef = React.useRef(null);
 
-  const doneCount = results.length;
-  const current = running ? queue[idx] : null;
+  useVvEffect(() => { if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' }); }, [turns.length, busy]);
+
+  if (!w) return null;
+  const saved = new Set(w.spijs.map(p => p.dish.toLowerCase()));
+  const first = turns.length === 0;
+
+  const ask = async () => {
+    const text = [chips.join(', '), input.trim()].filter(Boolean).join(' — ');
+    if (!text || busy) return;
+    const content = first ? `Voorkeuren: ${text}` : text;
+    const next = [...messages, { role: 'user', content }];
+    setBusy(true); setErr(''); setInput(''); setChips([]);
+    setTurns(t => [...t, { role: 'user', text }]);
+    try {
+      const r = await window.fetchJSON('/api/lookup?action=pairing', { method: 'POST', body: JSON.stringify({ rowNumber: w.rowNumber, messages: next }) });
+      if (!r.ok) throw new Error(r.data.message || 'Advies mislukt.');
+      setMessages([...next, { role: 'assistant', content: r.data.raw }]);
+      setTurns(t => [...t, { role: 'assistant', intro: r.data.intro, dishes: r.data.dishes, question: r.data.question }]);
+    } catch (e) {
+      setErr(e.message);
+      setMessages(next.slice(0, -1));
+      setTurns(t => t.slice(0, -1));
+    }
+    setBusy(false);
+  };
+
+  const save = async (d) => {
+    if (savingDish) return;
+    setSavingDish(d.dish);
+    try {
+      const r = await window.fetchJSON('/api/lookup?action=pairing_save', { method: 'POST', body: JSON.stringify({ rowNumber: w.rowNumber, dish: d.dish, why: d.why }) });
+      if (!r.ok) throw new Error(r.data.message || 'Bewaren mislukt.');
+      if (r.data.wines) window.WINES = r.data.wines.map(window.adaptWine);
+      if (window.__refresh) window.__refresh();
+    } catch (e) { setErr(e.message); }
+    setSavingDish(null);
+  };
+
+  const toggleChip = (c) => setChips(cs => cs.includes(c) ? cs.filter(x => x !== c) : [...cs, c]);
+  const canAsk = !busy && (chips.length > 0 || input.trim().length > 0);
 
   return (
     <div style={{ position: 'relative', height: '100%', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '50px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <div>
-          <div style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--faint)' }}>{doneCount} van {total}</div>
-          <div style={{ fontSize: 22, fontWeight: 680, letterSpacing: -0.5, color: 'var(--ink)', marginTop: 3 }}>Drinkvensters schatten</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[w.naam, w.jaar].filter(Boolean).join(' · ')}</div>
+          <div style={{ fontSize: 22, fontWeight: 680, letterSpacing: -0.5, color: 'var(--ink)', marginTop: 3 }}>Wat eet je hierbij?</div>
         </div>
         <window.GlassBtn onClick={onClose}><window.IcX size={18} /></window.GlassBtn>
       </div>
-      <div style={{ margin: '0 18px', height: 4, borderRadius: 2, background: 'var(--fill)', overflow: 'hidden', flexShrink: 0 }}>
-        <div style={{ width: (doneCount / Math.max(1, total)) * 100 + '%', height: '100%', background: 'var(--gold)', transition: 'width .3s' }} />
-      </div>
 
-      <div className="scroll" style={{ flex: 1, overflowY: 'auto', padding: '14px 18px 24px' }}>
-        {current && (
-          <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 14, display: 'flex', gap: 14, alignItems: 'center', boxShadow: 'var(--shadow), var(--hair)', marginBottom: 14 }}>
-            <window.WineThumb w={current} h={52} label year={current.jaar} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{current.naam}</div>
-              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>Schatten…</div>
+      <div className="scroll" style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 16px' }}>
+        {first && !busy && (
+          <div style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.5, padding: '4px 4px 14px' }}>
+            Kies een paar voorkeuren of beschrijf de gelegenheid. Je kunt daarna blijven bijsturen tot er iets tussen zit dat je wilt bewaren.
+          </div>
+        )}
+        {turns.map((t, i) => t.role === 'user' ? (
+          <div key={i} style={{ display: 'flex', justifyContent: 'flex-end', margin: '6px 0 12px' }}>
+            <div style={{ maxWidth: '82%', background: 'var(--brand)', color: '#fff', borderRadius: '16px 16px 4px 16px', padding: '10px 14px', fontSize: 14.5, lineHeight: 1.4 }}>{t.text}</div>
+          </div>
+        ) : (
+          <div key={i} style={{ margin: '0 0 16px' }}>
+            {t.intro && <div style={{ fontSize: 14.5, color: 'var(--ink)', lineHeight: 1.45, padding: '0 4px 10px' }}>{t.intro}</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {t.dishes.map((d, j) => {
+                const isSaved = saved.has(d.dish.toLowerCase());
+                return (
+                  <div key={j} style={{ background: 'var(--surface)', borderRadius: 16, padding: 14, boxShadow: 'var(--shadow), var(--hair)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15.5, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.3 }}>{d.dish}</div>
+                      <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, lineHeight: 1.45 }}>{d.why}</div>
+                    </div>
+                    <button onClick={() => !isSaved && save(d)} disabled={isSaved || savingDish === d.dish} className="tap" style={{ flexShrink: 0, border: 'none', cursor: isSaved ? 'default' : 'pointer', fontFamily: 'inherit',
+                      padding: '8px 12px', borderRadius: 999, fontSize: 13, fontWeight: 590,
+                      background: isSaved ? 'var(--brand-pale)' : 'var(--brand)', color: isSaved ? 'var(--brand)' : '#fff', opacity: savingDish === d.dish ? 0.6 : 1 }}>
+                      {isSaved ? '✓ Bewaard' : savingDish === d.dish ? 'Bewaren…' : 'Bewaren'}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
+            {t.question && <div style={{ fontSize: 13.5, color: 'var(--muted)', fontStyle: 'italic', lineHeight: 1.45, padding: '10px 4px 0' }}>{t.question}</div>}
           </div>
-        )}
-        {!running && (
-          <div style={{ fontSize: 14, color: 'var(--muted)', padding: '4px 6px 12px', lineHeight: 1.5 }}>
-            {stopRef.current && idx < total ? 'Gestopt. ' : 'Klaar. '}
-            {results.filter(r => r.ok).length} geschat · {results.filter(r => !r.ok).length} mislukt. Alles staat als <b>schatting</b>; bevestigen doe je per wijn op de detailpagina.
-          </div>
-        )}
-        {results.length > 0 && (
-          <div style={{ background: 'var(--surface)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow), var(--hair)' }}>
-            {results.map((r, i) => (
-              <div key={r.w.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', minHeight: 46, borderTop: i ? '0.5px solid var(--sep)' : 'none' }}>
-                <span style={{ flex: 1, fontSize: 14.5, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.w.naam}{r.w.jaar ? ` ${r.w.jaar}` : ''}</span>
-                <span style={{ fontSize: 14.5, fontWeight: 590, color: r.ok ? 'var(--ink)' : 'var(--red)', flexShrink: 0 }}>{r.ok ? `${r.van}–${r.tot}` : 'mislukt'}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        ))}
+        {busy && <div style={{ fontSize: 14, color: 'var(--muted)', padding: '6px 4px 12px' }}>De sommelier denkt na…</div>}
+        {err && <div style={{ padding: 12, borderRadius: 13, background: 'rgba(200,60,60,0.08)', color: 'var(--red)', fontSize: 14, marginBottom: 12 }}>{err}</div>}
+        <div ref={bottomRef} />
       </div>
 
-      <div style={{ flexShrink: 0, padding: '12px 18px calc(18px + env(safe-area-inset-bottom, 0px))', background: 'var(--bg)', borderTop: '0.5px solid var(--sep)' }}>
-        <button onClick={() => { if (running) { stopRef.current = true; setIdx(i => i); } else onClose(); }} className="tap" style={{ width: '100%', padding: '14px', borderRadius: 13, border: 'none', cursor: 'pointer',
-          fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, background: running ? 'var(--surface)' : 'var(--brand)', color: running ? 'var(--ink)' : '#fff', boxShadow: running ? 'var(--shadow), var(--hair)' : 'none' }}>
-          {running ? 'Stoppen na deze wijn' : 'Sluiten'}
-        </button>
+      <div style={{ flexShrink: 0, padding: '10px 18px calc(16px + env(safe-area-inset-bottom, 0px))', background: 'var(--bg)', borderTop: '0.5px solid var(--sep)' }}>
+        {first && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 10 }}>
+            {PAIRING_CHIPS.map(c => {
+              const on = chips.includes(c);
+              return (
+                <button key={c} onClick={() => toggleChip(c)} className="tap" style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '7px 12px', borderRadius: 999, fontSize: 13, fontWeight: 590,
+                  background: on ? 'var(--brand)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink)', boxShadow: on ? 'none' : 'var(--shadow), var(--hair)' }}>{c}</button>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); ask(); } }}
+            placeholder={first ? 'Bijv. zomeravond, geen room, twee gasten…' : 'Stuur bij: lichter, zonder vlees, meer Azië…'}
+            style={{ flex: 1, minWidth: 0, border: 'none', borderRadius: 13, background: 'var(--surface)', boxShadow: 'var(--shadow), var(--hair)', padding: '12px 14px', fontSize: 15, color: 'var(--ink)', fontFamily: 'inherit', outline: 'none' }} />
+          <button onClick={ask} disabled={!canAsk} className="tap" style={{ flexShrink: 0, border: 'none', cursor: canAsk ? 'pointer' : 'default', fontFamily: 'inherit', padding: '12px 16px', borderRadius: 13, fontSize: 15, fontWeight: 600,
+            background: 'var(--brand)', color: '#fff', opacity: canAsk ? 1 : 0.45 }}>{first ? 'Advies' : 'Stuur'}</button>
+        </div>
       </div>
     </div>
   );
 }
-window.DrinkWindowRunner = DrinkWindowRunner;
+window.PairingSheet = PairingSheet;
   </script>
 
   <!-- ───────────────────────── nieuwe fles / bewerken ───────────────────────── -->
@@ -1675,7 +1769,7 @@ function SuperadminUserPicker() {
   );
 }
 
-function AccountScreen({ me, onTab, onVivinoAll, onDrinkAll }) {
+function AccountScreen({ me, onTab, onVivinoAll }) {
   const admin = me && (me.role === 'admin' || me.role === 'superadmin');
   const superadmin = me && me.role === 'superadmin';
   const username = (me && me.username) || '';
@@ -1747,7 +1841,6 @@ function AccountScreen({ me, onTab, onVivinoAll, onDrinkAll }) {
 
           {window.IS_ADMIN && (() => {
             const openVivino = window.WINES.filter(w => !w.vivinoId).length;
-            const openDrink = window.WINES.filter(w => !w.drinkVan && !w.drinkTot).length;
             const wijnen = (n) => `${n} ${n === 1 ? 'wijn' : 'wijnen'}`;
             const row = (icon, title, sub, n, on, border) => (
               <button onClick={() => n && on && on()} disabled={!n} className="tap"
@@ -1765,11 +1858,9 @@ function AccountScreen({ me, onTab, onVivinoAll, onDrinkAll }) {
                 <div className="add-group">
                   {row(<window.IcStar size={18} style={{ color: 'var(--gold)', flexShrink: 0 }} />, 'Vivino-matching starten',
                     openVivino ? `${wijnen(openVivino)} nog zonder koppeling` : 'Alle wijnen zijn gekoppeld', openVivino, onVivinoAll, false)}
-                  {row(<window.TabChart size={18} style={{ color: 'var(--brand)', flexShrink: 0 }} />, 'Drinkvensters schatten',
-                    openDrink ? `${wijnen(openDrink)} nog zonder drinkvenster` : 'Alle wijnen hebben een drinkvenster', openDrink, onDrinkAll, true)}
                 </div>
                 <div style={{ fontSize: 12.5, color: 'var(--faint)', padding: '8px 8px 0', lineHeight: 1.5 }}>
-                  Vivino-koppelingen bevestig je één voor één. Drinkvensters worden als <b>schatting</b> opgeslagen en overschrijven nooit een venster dat je zelf hebt bevestigd of ingevuld.
+                  Je loopt wijn voor wijn door de kandidaten en bevestigt elke koppeling zelf — er wordt niets automatisch overgenomen.
                 </div>
               </window.LabeledSection>
             );
@@ -1896,7 +1987,7 @@ function WineApp({ me }) {
   const [editing, setEditing] = useRootState(null);
   const [tab, setTab] = useRootState('kelder');
   const [vivinoQueue, setVivinoQueue] = useRootState(null);
-  const [drinkQueue, setDrinkQueue] = useRootState(null);
+  const [pairingWine, setPairingWine] = useRootState(null);
 
   const wine = window.WINES.find(w => w.id === id) || null;
   const detailOpen = screen === 'detail' && !!wine;
@@ -1911,8 +2002,7 @@ function WineApp({ me }) {
   else if (tab === 'kasten') base = <window.KastenScreen onOpen={open} onTab={setTab} />;
   else if (tab === 'analyse') base = <window.AnalyseScreen onTab={setTab} />;
   else base = <window.AccountScreen me={me} onTab={setTab}
-    onVivinoAll={() => setVivinoQueue(window.WINES.filter(w => !w.vivinoId))}
-    onDrinkAll={() => setDrinkQueue(window.WINES.filter(w => !w.drinkVan && !w.drinkTot))} />;
+    onVivinoAll={() => setVivinoQueue(window.WINES.filter(w => !w.vivinoId))} />;
 
   return (
     <div style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
@@ -1928,6 +2018,7 @@ function WineApp({ me }) {
           onBack={() => setScreen('list')}
           onEdit={(w) => setEditing(w)}
           onVivino={(w) => setVivinoQueue([w])}
+          onPairing={(w) => setPairingWine(w)}
           onDeleted={() => { setScreen('list'); setId(null); refresh(); }} />}
       </div>
 
@@ -1936,9 +2027,9 @@ function WineApp({ me }) {
           <window.VivinoSheet key={vivinoQueue.map(w => w.id).join(',')} queue={vivinoQueue} onClose={() => { setVivinoQueue(null); refresh(); }} />
         </div>
       )}
-      {drinkQueue && (
+      {pairingWine && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 90, boxShadow: '0 -10px 40px rgba(0,0,0,0.12)' }}>
-          <window.DrinkWindowRunner key={drinkQueue.map(w => w.id).join(',')} queue={drinkQueue} onClose={() => { setDrinkQueue(null); refresh(); }} />
+          <window.PairingSheet key={pairingWine.id} wineId={pairingWine.id} onClose={() => { setPairingWine(null); refresh(); }} />
         </div>
       )}
 

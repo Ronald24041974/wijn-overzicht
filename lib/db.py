@@ -160,6 +160,7 @@ def ensure_wines_columns():
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS drink_to INTEGER")
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS drink_confirmed BOOLEAN DEFAULT FALSE")
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS drink_reason TEXT")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS pairings JSONB DEFAULT '[]'::jsonb")
         conn.commit()
 
 
@@ -245,7 +246,7 @@ WINE_COLS = (
     "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
     "supplieremail,suckling,updatedat,producer,alcohol,"
     "vivino_wine_id,vivino_vintage_id,vivino_ratings_count,"
-    "drink_from,drink_to,drink_confirmed,drink_reason"
+    "drink_from,drink_to,drink_confirmed,drink_reason,pairings"
 )
 
 
@@ -285,6 +286,7 @@ def serialize_wine(row):
         "drinkTo":         r.get("drink_to"),
         "drinkConfirmed":  bool(r.get("drink_confirmed")),
         "drinkReason":     r.get("drink_reason"),
+        "pairings":        r.get("pairings") or [],
     }
 
 
@@ -521,5 +523,35 @@ def save_drink_window(wine_id: int, owner_id: int, drink_from, drink_to, reason:
             ))
             if cur.rowcount == 0:
                 raise ValueError(f"Wijn ID {wine_id} niet gevonden")
+        conn.commit()
+    return get_wine_row(wine_id, owner_id)
+
+
+def add_pairing(wine_id: int, owner_id: int, dish: str, why: str = "") -> dict:
+    import json
+    entry = {"id": int(time.time() * 1000), "dish": dish.strip()[:120], "why": (why or "").strip()[:300], "savedAt": int(time.time())}
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE wines SET pairings = COALESCE(pairings, '[]'::jsonb) || %s::jsonb WHERE id=%s AND owner_id=%s",
+                (json.dumps([entry], ensure_ascii=False), wine_id, owner_id),
+            )
+            if cur.rowcount == 0:
+                raise ValueError(f"Wijn ID {wine_id} niet gevonden")
+        conn.commit()
+    return get_wine_row(wine_id, owner_id)
+
+
+def remove_pairing(wine_id: int, owner_id: int, pairing_id: int) -> dict:
+    import json
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pairings FROM wines WHERE id=%s AND owner_id=%s", (wine_id, owner_id))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Wijn ID {wine_id} niet gevonden")
+            kept = [p for p in (row["pairings"] or []) if p.get("id") != pairing_id]
+            cur.execute("UPDATE wines SET pairings=%s::jsonb WHERE id=%s AND owner_id=%s",
+                        (json.dumps(kept, ensure_ascii=False), wine_id, owner_id))
         conn.commit()
     return get_wine_row(wine_id, owner_id)

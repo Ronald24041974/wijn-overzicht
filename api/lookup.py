@@ -3,9 +3,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from urllib.parse import urlparse, parse_qs
 from lib.auth import require_admin
 from lib.helpers import BaseHandler, get_anthropic_client, message_text, MODEL_FAST
-from lib.db import ensure_wines_columns, resolve_owner_id, get_wine_row, apply_vivino_match, save_drink_window, load_wines
+from lib.db import (ensure_wines_columns, resolve_owner_id, get_wine_row, apply_vivino_match,
+                    save_drink_window, add_pairing, remove_pairing, load_wines)
 from lib.vivino import find_candidates
 from lib.drinkwindow import estimate_drink_window
+from lib.pairing import advise_pairing
 
 
 def _lookup_wine(name: str) -> dict:
@@ -63,6 +65,12 @@ class handler(BaseHandler):
                 self._vivino_apply(data, username, role)
             elif action == "drink_window":
                 self._drink_window(data, username, role)
+            elif action == "pairing":
+                self._pairing(data, username, role)
+            elif action == "pairing_save":
+                self._pairing_save(data, username, role)
+            elif action == "pairing_delete":
+                self._pairing_delete(data, username, role)
             else:
                 name = (data.get("name") or "").strip()
                 if not name:
@@ -108,4 +116,34 @@ class handler(BaseHandler):
             return
         est = estimate_drink_window(wine)
         updated = save_drink_window(wine["rowNumber"], owner_id, est["drinkFrom"], est["drinkTo"], est["reason"], confirmed=False)
+        self.json_response(200, {"wine": updated, "wines": load_wines(owner_id)})
+
+    def _pairing(self, data, username, role):
+        wine, owner_id = self._wine_for(data, username, role)
+        if not wine: return
+        messages = data.get("messages") or []
+        if not isinstance(messages, list) or not messages:
+            self.json_response(400, {"message": "Geef een voorkeur of vraag op."})
+            return
+        self.json_response(200, advise_pairing(wine, messages))
+
+    def _pairing_save(self, data, username, role):
+        wine, owner_id = self._wine_for(data, username, role)
+        if not wine: return
+        dish = (data.get("dish") or "").strip()
+        if not dish:
+            self.json_response(400, {"message": "Gerecht ontbreekt."})
+            return
+        updated = add_pairing(wine["rowNumber"], owner_id, dish, data.get("why") or "")
+        self.json_response(200, {"wine": updated, "wines": load_wines(owner_id)})
+
+    def _pairing_delete(self, data, username, role):
+        wine, owner_id = self._wine_for(data, username, role)
+        if not wine: return
+        try:
+            pairing_id = int(data.get("pairingId"))
+        except (TypeError, ValueError):
+            self.json_response(400, {"message": "pairingId ontbreekt."})
+            return
+        updated = remove_pairing(wine["rowNumber"], owner_id, pairing_id)
         self.json_response(200, {"wine": updated, "wines": load_wines(owner_id)})
