@@ -250,6 +250,13 @@ const IcChevR   = (p) => <Icon {...p} d="M9 5l7 7-7 7" />;
 const IcChevDown= (p) => <Icon {...p} d="M5 9l7 7 7-7" />;
 const IcStar    = (p) => <Icon {...p} fill="currentColor" sw={0} children={<path d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.1 6.47L12 17.4l-5.8 3.05 1.1-6.47L2.6 9.35l6.5-.95L12 2.5z"/>} />;
 const IcZoom    = (p) => <Icon {...p} children={<><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.2-3.2M11 8v6M8 11h6"/></>} />;
+// Vivino-merkteken (bronvermelding bij de score): rood afgerond vlak met witte V
+const IcVivino  = ({ size = 12, style }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" style={style} aria-label="Vivino">
+    <rect x="1.5" y="1.5" width="21" height="21" rx="6.5" fill="#B71C2E" />
+    <path d="M7 7.5l5 9.5 5-9.5" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 const IcMore    = (p) => <Icon {...p} sw={0} fill="currentColor" children={<><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></>} />;
 const IcCart    = (p) => <Icon {...p} children={<><path d="M3 4h2l2.2 11.2a1 1 0 001 .8h8.5a1 1 0 001-.8L20 7H6"/><circle cx="9" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></>} />;
 const IcX       = (p) => <Icon {...p} d="M6 6l12 12M18 6L6 18" sw={2} />;
@@ -273,7 +280,7 @@ const TabChart  = (p) => <Icon {...p} children={<><path d="M5 20V11M12 20V5M19 2
 const TabUser   = (p) => <Icon {...p} children={<><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/></>} />;
 
 Object.assign(window, {
-  IcSearch, IcPlus, IcMinus, IcChevL, IcChevR, IcChevDown, IcStar, IcZoom, IcMore,
+  IcSearch, IcPlus, IcMinus, IcChevL, IcChevR, IcChevDown, IcStar, IcZoom, IcMore, IcVivino,
   IcCart, IcX, IcTrash, IcPencil, IcArrowR, IcLogout, IcGrape,
   TabList, TabCellar, TabChart, TabUser,
 });
@@ -413,6 +420,7 @@ function WineCard({ w, onClick }) {
               <span title="Vivino-score" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 12, color: 'var(--muted)', fontWeight: 590, whiteSpace: 'nowrap', flexShrink: 0 }}>
                 <window.IcStar size={11} style={{ color: 'var(--gold)', flexShrink: 0 }} />
                 {Number(w.vivino).toFixed(1)}
+                <window.IcVivino size={12} style={{ flexShrink: 0, marginLeft: 1 }} />
               </span>
             </React.Fragment>
           )}
@@ -516,8 +524,9 @@ function ListScreen({ onOpen, onAdd, onTab }) {
     return okType && okQ;
   });
 
-  const totaal = window.WINES.reduce((a, w) => a + w.aantal, 0);
-  const waarde = window.WINES.reduce((a, w) => a + w.aantal * w.prijs, 0);
+  // Statistieken volgen de selectie hierboven (soortfilter en zoekopdracht), niet de hele kelder
+  const totaal = wines.reduce((a, w) => a + w.aantal, 0);
+  const waarde = wines.reduce((a, w) => a + w.aantal * w.prijs, 0);
   const gem = totaal ? Math.round(waarde / totaal) : 0;
 
   const stat = (label, val) => (
