@@ -161,6 +161,7 @@ def ensure_wines_columns():
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS drink_confirmed BOOLEAN DEFAULT FALSE")
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS drink_reason TEXT")
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS pairings JSONB DEFAULT '[]'::jsonb")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS supplierurl TEXT")
         conn.commit()
 
 
@@ -246,7 +247,7 @@ WINE_COLS = (
     "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
     "supplieremail,suckling,updatedat,producer,alcohol,"
     "vivino_wine_id,vivino_vintage_id,vivino_ratings_count,"
-    "drink_from,drink_to,drink_confirmed,drink_reason,pairings"
+    "drink_from,drink_to,drink_confirmed,drink_reason,pairings,supplierurl"
 )
 
 
@@ -275,6 +276,7 @@ def serialize_wine(row):
         "supplierAddress": r["supplieraddress"],
         "supplierPhone":   r["supplierphone"],
         "supplierEmail":   r["supplieremail"],
+        "supplierUrl":     r.get("supplierurl"),
         "suckling":        r["suckling"],
         "updatedAt":       r["updatedat"],
         "producer":        r.get("producer"),
@@ -419,7 +421,8 @@ def update_wine(data: dict, owner_id: int) -> dict:
                     vivino=%s,purchaseprice=%s,purchasevalue=%s,currentprice=%s,currentvalue=%s,
                     note=%s,cabinet=%s,score=%s,suppliername=%s,suppliercontact=%s,
                     supplieraddress=%s,supplierphone=%s,supplieremail=%s,suckling=%s,updatedat=%s,
-                    producer=%s,alcohol=%s,drink_from=%s,drink_to=%s,drink_confirmed=%s,drink_reason=%s
+                    producer=%s,alcohol=%s,drink_from=%s,drink_to=%s,drink_confirmed=%s,drink_reason=%s,
+                    supplierurl=%s
                 WHERE id=%s AND owner_id=%s
             """, (
                 _pick("name"),
@@ -450,6 +453,7 @@ def update_wine(data: dict, owner_id: int) -> dict:
                 drink_to,
                 drink_confirmed,
                 drink_reason,
+                _pick("supplierUrl", "supplierurl"),
                 wine_id,
                 owner_id,
             ))

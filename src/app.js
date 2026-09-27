@@ -863,6 +863,7 @@ function editorPanel(wine) {
             ${formField('Telefoonnummer', 'supplierPhone', wine.supplierPhone || '', false, 'tel', !admin)}
             ${formField('E-mailadres',    'supplierEmail', wine.supplierEmail || '', false, 'email', !admin)}
           </div>
+          ${formField('Webshop (link naar de wijn)', 'supplierUrl', wine.supplierUrl || '', false, 'url', !admin)}
           <label class="form-field wide">
             Adresgegevens
             <input name="supplierAddress" value="${esc(wine.supplierAddress || '')}"${admin ? '' : ' disabled'} />
@@ -924,7 +925,7 @@ function renderSupplierResults() {
   const s = supplierSearch;
   if (s.status === 'loading') return `
     <div class="supplier-results-section">
-      <div class="supplier-loading">${iconSpinner()} Beste leveranciers zoeken…</div>
+      <div class="supplier-loading">${iconSpinner()} Webshops zoeken… (15–30 s)</div>
     </div>
   `;
   if (s.status === 'error') return `
@@ -935,14 +936,14 @@ function renderSupplierResults() {
   if (s.status === 'ok') {
     if (!s.results.length) return `
       <div class="supplier-results-section">
-        <p class="empty">Geen leveranciers gevonden.</p>
+        <p class="empty">Geen webshop gevonden die deze wijn nu aanbiedt.</p>
       </div>
     `;
     return `
       <div class="supplier-results-section">
-        <p class="supplier-disclaimer">Geschatte prijzen — controleer actuele prijs op de website.</p>
+        <p class="supplier-disclaimer">Gevonden via web search — de webshop opent in een nieuw venster, daar leg je de wijn in het winkelmandje. Controleer prijs en jaargang op de site.</p>
         <div class="supplier-list">
-          ${s.results.map((r, i) => supplierResultCard(r, i === 0)).join('')}
+          ${s.results.map((r, i) => supplierResultCard(r, i === 0, i)).join('')}
         </div>
       </div>
     `;
@@ -950,17 +951,19 @@ function renderSupplierResults() {
   return '';
 }
 
-function supplierResultCard(s, isBest) {
+function supplierResultCard(s, isBest, idx) {
+  const host = (() => { try { return new URL(s.url).hostname.replace(/^www\./, ''); } catch (e) { return ''; } })();
+  const saved = selectedWineSupplierUrl() === s.url;
   return `
     <div class="supplier-result-card${isBest ? ' best' : ''}">
-      ${isBest ? '<span class="src-badge">Beste keuze</span>' : ''}
+      ${isBest && s.vintageMatch !== false ? '<span class="src-badge">Goedkoopst</span>' : ''}
       <div class="src-header">
-        <span class="src-name">${esc(s.name)}</span>
+        <span class="src-name">${esc(s.shop || s.name || host)}</span>
         ${s.reviewScore ? `
           <span class="src-rating">★ ${Number(s.reviewScore).toFixed(1)}
             ${s.reviewPlatform ? `<em>${esc(s.reviewPlatform)}</em>` : ''}
           </span>
-        ` : ''}
+        ` : `<span class="src-rating"><em>${esc(host)}</em></span>`}
       </div>
       <div class="src-prices">
         <span>€${Number(s.pricePerBottle || 0).toFixed(2)} / fles</span>
@@ -968,12 +971,23 @@ function supplierResultCard(s, isBest) {
       </div>
       <div class="src-total">
         <span>3 flessen totaal</span>
-        <strong>€${Number(s.totalFor3 || 0).toFixed(2)}</strong>
+        <strong>€${Number(s.totalFor3 || s.total || 0).toFixed(2)}</strong>
       </div>
+      ${s.vintageMatch === false ? `<p class="src-notes src-warn">⚠ Andere jaargang: ${esc(String(s.year))} in plaats van ${esc(String(s.wantedYear))}</p>` : ''}
+      ${s.vintageMatch === null ? `<p class="src-notes">Jaargang niet vermeld — controleer op de site</p>` : ''}
+      ${s.inStock === false ? `<p class="src-notes">⚠ Niet op voorraad</p>` : ''}
       ${s.notes ? `<p class="src-notes">${esc(s.notes)}</p>` : ''}
-      ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" class="src-link">Ga naar webshop →</a>` : ''}
+      <div class="src-actions">
+        ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" class="src-link">🛒 Bestellen bij ${esc(host)} →</a>` : ''}
+        <button type="button" class="ghost-button src-save" data-idx="${idx}" ${saved ? 'disabled' : ''}>${saved ? '✓ Vaste leverancier' : 'Bewaren als leverancier'}</button>
+      </div>
     </div>
   `;
+}
+
+function selectedWineSupplierUrl() {
+  const w = getSelected();
+  return (w && w.supplierUrl) || '';
 }
 
 function renderImagePicker(wine) {
@@ -1422,14 +1436,11 @@ async function handleFindSuppliers(wine) {
     const r = await fetch('/api/find-suppliers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: wine.name, type: wine.type, grape: wine.grape,
-        country: wine.country, region: wine.region, year: wine.year,
-      }),
+      body: JSON.stringify({ rowNumber: wine.rowNumber, bottles: 3 }),
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.message || 'Zoeken mislukt');
-    supplierSearch = { wineId: wine.id, status: 'ok', results: Array.isArray(data) ? data : [], error: '' };
+    supplierSearch = { wineId: wine.id, status: 'ok', results: Array.isArray(data.offers) ? data.offers : [], error: '' };
   } catch (e) {
     supplierSearch = { wineId: wine.id, status: 'error', results: [], error: e.message };
   }
@@ -2123,6 +2134,12 @@ function bindEvents() {
   document.querySelector('#find-suppliers')?.addEventListener('click', () => {
     handleFindSuppliers(getSelected());
   });
+  document.querySelectorAll('.src-save').forEach(btn => btn.addEventListener('click', () => {
+    const wine = getSelected();
+    const offer = supplierSearch.results[Number(btn.dataset.idx)];
+    if (!wine || !offer) return;
+    saveWine({ rowNumber: wine.rowNumber, supplierName: offer.shop || offer.name || '', supplierUrl: offer.url || '' });
+  }));
 
   /* Drinkvenster schatten */
   document.querySelector('#estimate-drink')?.addEventListener('click', () => handleEstimateDrink(getSelected()));
