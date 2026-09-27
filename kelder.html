@@ -1530,7 +1530,7 @@ window.AddScreen = AddScreen;
 const { useState: useKastState } = React;
 
 function CabinetCard({ k, wines, onOpen, idx }) {
-  const [open, setOpen] = useKastState(idx === 0);
+  const [open, setOpen] = useKastState(false); // alle kasten standaard ingeklapt
   const count = wines.reduce((a, w) => a + w.aantal, 0);
   const waarde = wines.reduce((a, w) => a + w.aantal * w.prijs, 0);
   return (
