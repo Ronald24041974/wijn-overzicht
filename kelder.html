@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
 <title>Wijnoverzicht</title>
 <meta name="theme-color" content="#1f3c36" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -28,7 +28,8 @@
     --c-dash: rgba(60,60,67,0.22);
   }
   * { box-sizing: border-box; }
-  html, body, #root { height: 100%; margin: 0; }
+  html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
+  #root { height: 100%; }
   body {
     background: #e9e7e2;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
@@ -76,6 +77,26 @@
 </head>
 <body>
   <div id="root"></div>
+
+  <script>
+  // iOS Safari schuift bij een focus op een invoerveld de hele pagina omhoog om het veld boven het
+  // toetsenbord te krijgen. Daardoor verdween de kop van een scherm (met de sluitknop) uit beeld en
+  // werd het geparkeerde formulier onder de app zichtbaar. Laat de app-hoogte de zichtbare viewport
+  // volgen en houd de pagina zelf op scrollpositie 0.
+  (function () {
+    var vv = window.visualViewport;
+    var root = document.getElementById('root');
+    if (!vv || !root) return;
+    var apply = function () {
+      root.style.height = Math.round(vv.height) + 'px';
+      if (window.scrollY || window.scrollX || vv.offsetTop) window.scrollTo(0, 0);
+    };
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    window.addEventListener('scroll', function () { if (window.scrollY) window.scrollTo(0, 0); }, { passive: true });
+    apply();
+  })();
+  </script>
 
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
@@ -1195,9 +1216,11 @@ function PairingSheet({ wineId, onClose }) {
   const [busy, setBusy] = useVv(false);
   const [savingDish, setSavingDish] = useVv(null);
   const [err, setErr] = useVv('');
-  const bottomRef = React.useRef(null);
+  const scrollRef = React.useRef(null);
 
-  useVvEffect(() => { if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' }); }, [turns.length, busy]);
+  // Alleen de eigen lijst naar beneden scrollen. scrollIntoView() scrolde ook het document mee,
+  // waardoor iOS Safari de kop van dit scherm uit beeld schoof.
+  useVvEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [turns.length, busy, err]);
 
   if (!w) return null;
   const saved = new Set(w.spijs.map(p => p.dish.toLowerCase()));
@@ -1240,18 +1263,37 @@ function PairingSheet({ wineId, onClose }) {
 
   return (
     <div style={{ position: 'relative', height: '100%', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '50px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      {/* Kop: blijft altijd in beeld, met sluitknop */}
+      <div style={{ padding: '50px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexShrink: 0 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 11.5, fontWeight: 590, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[w.naam, w.jaar].filter(Boolean).join(' · ')}</div>
           <div style={{ fontSize: 22, fontWeight: 680, letterSpacing: -0.5, color: 'var(--ink)', marginTop: 3 }}>Wat eet je hierbij?</div>
         </div>
-        <window.GlassBtn onClick={onClose}><window.IcX size={18} /></window.GlassBtn>
+        <button onClick={onClose} className="tap" style={{ flexShrink: 0, border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '9px 14px', borderRadius: 999, fontSize: 14, fontWeight: 590,
+          background: 'var(--surface)', color: 'var(--ink)', boxShadow: 'var(--shadow), var(--hair)' }}>Sluiten</button>
       </div>
 
-      <div className="scroll" style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 16px' }}>
+      {/* Inhoud: eerst de keuzes, daarna het gesprek */}
+      <div ref={scrollRef} className="scroll" style={{ flex: 1, overflowY: 'auto', padding: '4px 18px 16px' }}>
         {first && !busy && (
-          <div style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.5, padding: '4px 4px 14px' }}>
-            Kies een paar voorkeuren of beschrijf de gelegenheid. Je kunt daarna blijven bijsturen tot er iets tussen zit dat je wilt bewaren.
+          <div>
+            <div style={{ fontSize: 14.5, color: 'var(--muted)', lineHeight: 1.5, padding: '4px 4px 12px' }}>
+              Kies een of meer richtingen, of beschrijf hieronder de gelegenheid. Je krijgt drie gerechten en kunt daarna bijsturen.
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 2px' }}>
+              {PAIRING_CHIPS.map(c => {
+                const on = chips.includes(c);
+                return (
+                  <button key={c} onClick={() => toggleChip(c)} className="tap" style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '9px 14px', borderRadius: 999, fontSize: 14, fontWeight: 590,
+                    background: on ? 'var(--brand)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink)', boxShadow: on ? 'none' : 'var(--shadow), var(--hair)' }}>{c}</button>
+                );
+              })}
+            </div>
+            {chips.length > 0 && (
+              <button onClick={ask} className="tap" style={{ marginTop: 18, width: '100%', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '14px 16px', borderRadius: 14, fontSize: 15.5, fontWeight: 600, background: 'var(--brand)', color: '#fff' }}>
+                Geef advies bij {chips.length === 1 ? chips[0].toLowerCase() : chips.length + ' keuzes'}
+              </button>
+            )}
           </div>
         )}
         {turns.map((t, i) => t.role === 'user' ? (
@@ -1268,7 +1310,7 @@ function PairingSheet({ wineId, onClose }) {
                   <div key={j} style={{ background: 'var(--surface)', borderRadius: 16, padding: 14, boxShadow: 'var(--shadow), var(--hair)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 15.5, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.3 }}>{d.dish}</div>
-                      <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, lineHeight: 1.45 }}>{d.why}</div>
+                      {d.why && <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, lineHeight: 1.45 }}>{d.why}</div>}
                     </div>
                     <button onClick={() => !isSaved && save(d)} disabled={isSaved || savingDish === d.dish} className="tap" style={{ flexShrink: 0, border: 'none', cursor: isSaved ? 'default' : 'pointer', fontFamily: 'inherit',
                       padding: '8px 12px', borderRadius: 999, fontSize: 13, fontWeight: 590,
@@ -1284,25 +1326,15 @@ function PairingSheet({ wineId, onClose }) {
         ))}
         {busy && <div style={{ fontSize: 14, color: 'var(--muted)', padding: '6px 4px 12px' }}>De sommelier denkt na…</div>}
         {err && <div style={{ padding: 12, borderRadius: 13, background: 'rgba(200,60,60,0.08)', color: 'var(--red)', fontSize: 14, marginBottom: 12 }}>{err}</div>}
-        <div ref={bottomRef} />
       </div>
 
-      <div style={{ flexShrink: 0, padding: '10px 18px calc(16px + env(safe-area-inset-bottom, 0px))', background: 'var(--bg)', borderTop: '0.5px solid var(--sep)' }}>
-        {first && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 10 }}>
-            {PAIRING_CHIPS.map(c => {
-              const on = chips.includes(c);
-              return (
-                <button key={c} onClick={() => toggleChip(c)} className="tap" style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '7px 12px', borderRadius: 999, fontSize: 13, fontWeight: 590,
-                  background: on ? 'var(--brand)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink)', boxShadow: on ? 'none' : 'var(--shadow), var(--hair)' }}>{c}</button>
-              );
-            })}
-          </div>
-        )}
+      {/* Invoerbalk: alleen het tekstveld, schuift mee boven het toetsenbord */}
+      <div style={{ flexShrink: 0, padding: '10px 18px calc(12px + env(safe-area-inset-bottom, 0px))', background: 'var(--bg)', borderTop: '0.5px solid var(--sep)' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); ask(); } }}
-            placeholder={first ? 'Bijv. zomeravond, geen room, twee gasten…' : 'Stuur bij: lichter, zonder vlees, meer Azië…'}
-            style={{ flex: 1, minWidth: 0, border: 'none', borderRadius: 13, background: 'var(--surface)', boxShadow: 'var(--shadow), var(--hair)', padding: '12px 14px', fontSize: 15, color: 'var(--ink)', fontFamily: 'inherit', outline: 'none' }} />
+            enterKeyHint="send" autoComplete="off" autoCorrect="on"
+            placeholder={first ? 'Of typ zelf: zomeravond, geen room, twee gasten…' : 'Stuur bij: lichter, zonder vlees, meer Azië…'}
+            style={{ flex: 1, minWidth: 0, border: 'none', borderRadius: 13, background: 'var(--surface)', boxShadow: 'var(--shadow), var(--hair)', padding: '12px 14px', fontSize: 16, color: 'var(--ink)', fontFamily: 'inherit', outline: 'none' }} />
           <button onClick={ask} disabled={!canAsk} className="tap" style={{ flexShrink: 0, border: 'none', cursor: canAsk ? 'pointer' : 'default', fontFamily: 'inherit', padding: '12px 16px', borderRadius: 13, fontSize: 15, fontWeight: 600,
             background: 'var(--brand)', color: '#fff', opacity: canAsk ? 1 : 0.45 }}>{first ? 'Advies' : 'Stuur'}</button>
         </div>
@@ -2033,8 +2065,10 @@ function WineApp({ me }) {
         </div>
       )}
 
-      <div style={{ position: 'absolute', inset: 0, zIndex: 70, transition: 'transform .4s cubic-bezier(.32,.72,0,1)',
+      <div style={{ position: 'absolute', inset: 0, zIndex: 70,
+        transition: 'transform .4s cubic-bezier(.32,.72,0,1), visibility 0s linear ' + (sheetOpen ? '0s' : '.4s'),
         transform: sheetOpen ? 'translateY(0)' : 'translateY(102%)', pointerEvents: sheetOpen ? 'auto' : 'none',
+        visibility: sheetOpen ? 'visible' : 'hidden',
         boxShadow: '0 -10px 40px rgba(0,0,0,0.12)', borderRadius: '20px 20px 0 0', overflow: 'hidden' }}>
         <window.AddScreen
           key={editing ? ('edit-' + editing.id) : (adding ? 'add' : 'closed')}
