@@ -1305,8 +1305,9 @@ function SupplierSheet({ wineId, onClose }) {
               const freeShip = o.freeShippingFrom && sub >= o.freeShippingFrom;
               return (
                 <div key={o.i} onClick={() => setSel(o.i)} style={{ background: 'var(--surface)', borderRadius: 16, padding: 14, boxShadow: 'var(--shadow), var(--hair)', position: 'relative', cursor: 'pointer',
-                  outline: selected ? '1.5px solid var(--brand)' : 'none', marginTop: rank === 0 ? 6 : 0 }}>
-                  {rank === 0 && <span style={{ position: 'absolute', top: -9, left: 14, background: 'var(--brand)', color: '#fff', fontSize: 10.5, fontWeight: 640, padding: '3px 9px', borderRadius: 999, letterSpacing: 0.2 }}>Goedkoopst</span>}
+                  outline: selected ? '1.5px solid var(--brand)' : 'none', marginTop: (rank === 0 || o.vintageMatch === false) ? 6 : 0 }}>
+                  {(rank === 0 && o.vintageMatch !== false) && <span style={{ position: 'absolute', top: -9, left: 14, background: 'var(--brand)', color: '#fff', fontSize: 10.5, fontWeight: 640, padding: '3px 9px', borderRadius: 999, letterSpacing: 0.2 }}>Goedkoopst</span>}
+                  {o.vintageMatch === false && <span style={{ position: 'absolute', top: -9, left: 14, background: 'var(--amber-ink)', color: '#fff', fontSize: 10.5, fontWeight: 640, padding: '3px 9px', borderRadius: 999, letterSpacing: 0.2 }}>Andere jaargang: {o.year}</span>}
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 15.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.shop}</div>
@@ -1322,7 +1323,8 @@ function SupplierSheet({ wineId, onClose }) {
                   <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 10, lineHeight: 1.45 }}>
                     {window.fmtEur(o.pricePerBottle)}/fles · {freeShip || !o.shipping ? 'gratis verzending' : window.fmtEur(o.shipping) + ' verzending'}{!freeShip && o.freeShippingFrom ? ` (gratis vanaf ${window.fmtEur(o.freeShippingFrom)})` : ''}
                     {!o.inStock && <span style={{ color: 'var(--red)' }}> · niet op voorraad</span>}
-                    {!o.vintageMatch && <span style={{ color: 'var(--amber-ink)' }}> · jaargang {o.year || 'onbekend'}</span>}
+                    {o.vintageMatch === false && <span style={{ color: 'var(--amber-ink)', fontWeight: 590 }}> · jaargang {o.year} in plaats van {o.wantedYear}</span>}
+                    {o.vintageMatch === null && <span style={{ color: 'var(--amber-ink)' }}> · jaargang niet vermeld, controleer op de site</span>}
                     {o.notes ? <><br />{o.notes}</> : null}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTop: '0.5px solid var(--sep)' }}>

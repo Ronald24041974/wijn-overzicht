@@ -644,6 +644,7 @@ h1, h2, h3, p { margin: 0; }
 .src-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .src-save { font-size: 0.78rem; padding: 5px 10px; }
 .src-save:disabled { opacity: .7; cursor: default; }
+.src-warn { color: #9a5b00; font-weight: 700; }
 
 /* --- Charts --- */
 .chart-grid {

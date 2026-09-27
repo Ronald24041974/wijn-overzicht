@@ -956,7 +956,7 @@ function supplierResultCard(s, isBest, idx) {
   const saved = selectedWineSupplierUrl() === s.url;
   return `
     <div class="supplier-result-card${isBest ? ' best' : ''}">
-      ${isBest ? '<span class="src-badge">Goedkoopst</span>' : ''}
+      ${isBest && s.vintageMatch !== false ? '<span class="src-badge">Goedkoopst</span>' : ''}
       <div class="src-header">
         <span class="src-name">${esc(s.shop || s.name || host)}</span>
         ${s.reviewScore ? `
@@ -973,7 +973,8 @@ function supplierResultCard(s, isBest, idx) {
         <span>3 flessen totaal</span>
         <strong>€${Number(s.totalFor3 || s.total || 0).toFixed(2)}</strong>
       </div>
-      ${s.vintageMatch === false ? `<p class="src-notes">⚠ Andere jaargang: ${esc(String(s.year || 'onbekend'))}</p>` : ''}
+      ${s.vintageMatch === false ? `<p class="src-notes src-warn">⚠ Andere jaargang: ${esc(String(s.year))} in plaats van ${esc(String(s.wantedYear))}</p>` : ''}
+      ${s.vintageMatch === null ? `<p class="src-notes">Jaargang niet vermeld — controleer op de site</p>` : ''}
       ${s.inStock === false ? `<p class="src-notes">⚠ Niet op voorraad</p>` : ''}
       ${s.notes ? `<p class="src-notes">${esc(s.notes)}</p>` : ''}
       <div class="src-actions">
