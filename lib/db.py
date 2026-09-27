@@ -156,6 +156,11 @@ def ensure_wines_columns():
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS vivino_wine_id INTEGER")
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS vivino_vintage_id INTEGER")
             cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS vivino_ratings_count INTEGER")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS drink_from INTEGER")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS drink_to INTEGER")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS drink_confirmed BOOLEAN DEFAULT FALSE")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS drink_reason TEXT")
+            cur.execute("ALTER TABLE wines ADD COLUMN IF NOT EXISTS pairings JSONB DEFAULT '[]'::jsonb")
         conn.commit()
 
 
@@ -240,7 +245,8 @@ WINE_COLS = (
     "purchaseprice,purchasevalue,currentprice,currentvalue,note,cabinet,"
     "score,suppliername,suppliercontact,supplieraddress,supplierphone,"
     "supplieremail,suckling,updatedat,producer,alcohol,"
-    "vivino_wine_id,vivino_vintage_id,vivino_ratings_count"
+    "vivino_wine_id,vivino_vintage_id,vivino_ratings_count,"
+    "drink_from,drink_to,drink_confirmed,drink_reason,pairings"
 )
 
 
@@ -276,6 +282,11 @@ def serialize_wine(row):
         "vivinoWineId":    r.get("vivino_wine_id"),
         "vivinoVintageId": r.get("vivino_vintage_id"),
         "vivinoRatingsCount": r.get("vivino_ratings_count"),
+        "drinkFrom":       r.get("drink_from"),
+        "drinkTo":         r.get("drink_to"),
+        "drinkConfirmed":  bool(r.get("drink_confirmed")),
+        "drinkReason":     r.get("drink_reason"),
+        "pairings":        r.get("pairings") or [],
     }
 
 
@@ -311,8 +322,9 @@ def add_wine(data: dict, owner_id: int) -> dict:
                 INSERT INTO wines (name,type,grape,country,region,year,quantity,
                     vivino,purchaseprice,purchasevalue,currentprice,currentvalue,
                     note,cabinet,score,suppliername,suppliercontact,supplieraddress,
-                    supplierphone,supplieremail,suckling,updatedat,owner_id,producer,alcohol)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    supplierphone,supplieremail,suckling,updatedat,owner_id,producer,alcohol,
+                    drink_from,drink_to,drink_confirmed)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id
             """, (
                 data.get("name") or None,
@@ -340,6 +352,9 @@ def add_wine(data: dict, owner_id: int) -> dict:
                 owner_id,
                 data.get("producer") or None,
                 number_or_none(data.get("alcohol")),
+                number_or_none(data.get("drinkFrom"), integer=True),
+                number_or_none(data.get("drinkTo"), integer=True),
+                bool(data.get("drinkConfirmed")) if data.get("drinkFrom") or data.get("drinkTo") else False,
             ))
             wine_id = cur.fetchone()["id"]
         conn.commit()
@@ -378,6 +393,24 @@ def update_wine(data: dict, owner_id: int) -> dict:
     quantity_only = set(data.keys()) <= {"rowNumber", "quantity"}
     now = ex.get("updatedat") if quantity_only else int(time.time())
 
+    drink_from = number_or_none(data.get("drinkFrom"), integer=True) if "drinkFrom" in data else ex.get("drink_from")
+    drink_to   = number_or_none(data.get("drinkTo"), integer=True)   if "drinkTo" in data   else ex.get("drink_to")
+    if drink_from and drink_to and drink_to < drink_from:
+        raise ValueError("Drinkvenster: 'tot' ligt vóór 'van'")
+    # De klassieke app stuurt bij elke save álle velden mee, dus kijk naar echte wijzigingen
+    window_changed = drink_from != ex.get("drink_from") or drink_to != ex.get("drink_to")
+    if "drinkConfirmed" in data:
+        drink_confirmed = bool(data["drinkConfirmed"])
+    elif window_changed:
+        # Handmatig ingevulde jaren gelden als bevestigd door de gebruiker
+        drink_confirmed = True
+    else:
+        drink_confirmed = bool(ex.get("drink_confirmed"))
+    if not (drink_from or drink_to):
+        drink_confirmed = False
+    # Bij een handmatige wijziging vervalt de motivatie van de schatting
+    drink_reason = None if window_changed else ex.get("drink_reason")
+
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -386,7 +419,7 @@ def update_wine(data: dict, owner_id: int) -> dict:
                     vivino=%s,purchaseprice=%s,purchasevalue=%s,currentprice=%s,currentvalue=%s,
                     note=%s,cabinet=%s,score=%s,suppliername=%s,suppliercontact=%s,
                     supplieraddress=%s,supplierphone=%s,supplieremail=%s,suckling=%s,updatedat=%s,
-                    producer=%s,alcohol=%s
+                    producer=%s,alcohol=%s,drink_from=%s,drink_to=%s,drink_confirmed=%s,drink_reason=%s
                 WHERE id=%s AND owner_id=%s
             """, (
                 _pick("name"),
@@ -413,6 +446,10 @@ def update_wine(data: dict, owner_id: int) -> dict:
                 now,
                 _pick("producer"),
                 number_or_none(data.get("alcohol")) if "alcohol" in data else ex.get("alcohol"),
+                drink_from,
+                drink_to,
+                drink_confirmed,
+                drink_reason,
                 wine_id,
                 owner_id,
             ))
@@ -466,5 +503,55 @@ def apply_vivino_match(wine_id: int, owner_id: int, c: dict) -> dict:
             ))
             if cur.rowcount == 0:
                 raise ValueError(f"Wijn ID {wine_id} niet gevonden")
+        conn.commit()
+    return get_wine_row(wine_id, owner_id)
+
+
+def save_drink_window(wine_id: int, owner_id: int, drink_from, drink_to, reason: str = None, confirmed: bool = False) -> dict:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE wines SET drink_from=%s, drink_to=%s, drink_confirmed=%s, drink_reason=%s, updatedat=%s
+                WHERE id=%s AND owner_id=%s
+            """, (
+                number_or_none(drink_from, integer=True),
+                number_or_none(drink_to, integer=True),
+                bool(confirmed),
+                (reason or "").strip()[:300] or None,
+                int(time.time()),
+                wine_id, owner_id,
+            ))
+            if cur.rowcount == 0:
+                raise ValueError(f"Wijn ID {wine_id} niet gevonden")
+        conn.commit()
+    return get_wine_row(wine_id, owner_id)
+
+
+def add_pairing(wine_id: int, owner_id: int, dish: str, why: str = "") -> dict:
+    import json
+    entry = {"id": int(time.time() * 1000), "dish": dish.strip()[:120], "why": (why or "").strip()[:300], "savedAt": int(time.time())}
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE wines SET pairings = COALESCE(pairings, '[]'::jsonb) || %s::jsonb WHERE id=%s AND owner_id=%s",
+                (json.dumps([entry], ensure_ascii=False), wine_id, owner_id),
+            )
+            if cur.rowcount == 0:
+                raise ValueError(f"Wijn ID {wine_id} niet gevonden")
+        conn.commit()
+    return get_wine_row(wine_id, owner_id)
+
+
+def remove_pairing(wine_id: int, owner_id: int, pairing_id: int) -> dict:
+    import json
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pairings FROM wines WHERE id=%s AND owner_id=%s", (wine_id, owner_id))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Wijn ID {wine_id} niet gevonden")
+            kept = [p for p in (row["pairings"] or []) if p.get("id") != pairing_id]
+            cur.execute("UPDATE wines SET pairings=%s::jsonb WHERE id=%s AND owner_id=%s",
+                        (json.dumps(kept, ensure_ascii=False), wine_id, owner_id))
         conn.commit()
     return get_wine_row(wine_id, owner_id)
