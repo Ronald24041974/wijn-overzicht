@@ -515,10 +515,13 @@ function TabBar({ active = 'kelder', onTab }) {
 function ListScreen({ onOpen, onAdd, onTab }) {
   const [q, setQ] = useS('');
   const [filter, setFilter] = useS('Alles');
-  const chips = ['Alles', 'Rood', 'Wit', 'Rosé', 'Mousserend'];
+  // Alleen soorten tonen die in de kelder voorkomen, in vaste volgorde
+  const inKelder = new Set(window.WINES.map(w => w.soort));
+  const chips = ['Alles', ...Object.keys(window.TYPE).filter(t => inKelder.has(t))];
+  const activeFilter = chips.includes(filter) ? filter : 'Alles';
 
   const wines = window.WINES.filter(w => {
-    const okType = filter === 'Alles' || w.soort === filter;
+    const okType = activeFilter === 'Alles' || w.soort === activeFilter;
     const s = q.trim().toLowerCase();
     const okQ = !s || [w.naam, w.druif, w.land, w.regio].join(' ').toLowerCase().includes(s);
     return okType && okQ;
@@ -562,7 +565,7 @@ function ListScreen({ onOpen, onAdd, onTab }) {
 
         <div className="chiprow" style={{ display: 'flex', gap: 8, padding: '14px 18px 2px', overflowX: 'auto' }}>
           {chips.map(c => {
-            const on = c === filter;
+            const on = c === activeFilter;
             return (
               <button key={c} onClick={() => setFilter(c)} className="tap" style={{
                 flexShrink: 0, padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
