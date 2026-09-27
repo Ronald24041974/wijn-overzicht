@@ -43,6 +43,8 @@ Elke nieuwe feature of bugfix volgt dit vaste proces:
   - `https://wijn-overzicht.vercel.app` → **oude/klassieke app** (`index.html` + `src/app.js`)
   - `https://wijn-overzicht-2.vercel.app` → **nieuwe Apple-redesign** (`kelder.html`), LIVE sinds 2026-06-07
 - **Vercel limiet:** max 12 functies in `api/`; gedeelde code in `lib/` via `vercel.json` → `includeFiles: "lib/**"`
+- **Vercel timeout:** `maxDuration: 60` voor alle Python-functies (`vercel.json`); web-search-aanroepen
+  (drinkvenster 8–15 s, leverancierszoeker 20–40 s) passen niet in de standaard 10 s
 - **Taal:** communiceer altijd in het Nederlands met de gebruiker
 
 ---
@@ -200,6 +202,84 @@ automatisch, geen cron** — koppelen gebeurt alleen op een expliciete actie en 
 
 ---
 
+## Drinkvenster (live 2026-09-27)
+
+- **DB:** `drink_from`, `drink_to` (INTEGER), `drink_confirmed` (BOOLEAN), `drink_reason` (TEXT).
+- **`lib/drinkwindow.py`** — `estimate_drink_window(wine)`: Sonnet 5 met web search (max 3
+  zoekopdrachten) zoekt eerst een drinkvenster bij producent/recensenten (Vinous, Wine Advocate,
+  Suckling, Decanter …), anders eigen inschatting. De bron staat in `drink_reason`.
+- **API:** `POST /api/lookup?action=drink_window` `{rowNumber, force?}`. Slaat op als **schatting**
+  (`drink_confirmed=false`). Een bevestigd venster wordt nooit overschreven → 409, tenzij `force`.
+- **Bevestigingslogica in `update_wine()`:** handmatig gewijzigde jaren gelden als bevestigd; alleen
+  échte wijzigingen tellen (de klassieke app stuurt bij elke save alle velden mee). Bij een
+  handmatige wijziging vervalt `drink_reason`.
+- **Redesign:** kaart "Drinkvenster" bovenaan de detailpagina (`DrinkWindowCard`) met oordeel in
+  gewone taal (`drinkStatus()`), tijdlijn, label schatting/bevestigd, acties Bevestigen /
+  Aanpassen / Opnieuw schatten. **Geen bulk-schatting** — per wijn, op verzoek (keuze gebruiker).
+- **Klassieke app:** velden van/tot in het formulier, statusregel, knop "Schat drinkvenster".
+
+---
+
+## Spijsadvies (live 2026-09-27)
+
+- **`lib/pairing.py`** — `advise_pairing(wine, messages)`: gesprek over één wijn; de client stuurt
+  de hele historie mee (max 12 beurten). Systeemprompt bevat wijngegevens + al bewaarde gerechten.
+  Antwoord: `intro`, 3 `dishes` (`dish`, `why`), optionele `question`, en `raw` (om als
+  assistant-beurt terug te sturen).
+- **API:** `POST /api/lookup?action=pairing` `{rowNumber, messages}`; `pairing_save`
+  `{rowNumber, dish, why}`; `pairing_delete` `{rowNumber, pairingId}`.
+- **DB:** JSONB-kolom `pairings` (`[{id, dish, why, savedAt}]`), in de redesign gemapt naar `w.spijs`.
+- **Redesign:** sectie "Spijs" op de detailpagina (`PairingSection`) + `PairingSheet`: chips met
+  voorkeuren in de inhoud, tekstveld onderaan, bijsturen, "Bewaren" per gerecht.
+- Alleen in de redesign; de klassieke app heeft geen spijsadvies.
+
+---
+
+## Leverancierszoeker — goedkoopste webshop (live 2026-09-27)
+
+- **`lib/suppliers.py`** — `find_offers(wine, bottles)`: Sonnet 5 met web search (max 6
+  zoekopdrachten) zoekt echte productpagina's op NL/BE-webshops. Alleen aanbiedingen met geldige
+  URL en prijs; streeft naar ≥ 3 verschillende shops en vult aan met andere jaargangen.
+  **`vintageMatch` wordt server-side berekend** (jaar op productpagina vs. gevraagd jaar;
+  `null` als onbekend) — het model markeerde afwijkende jaren niet betrouwbaar. Totalen
+  (`total`, `totalFor3`) worden zelf berekend zodat het aantal flessen client-side kan wisselen.
+  Ontdubbeling op (host, jaargang). Duurt 20–40 s.
+- **API:** `POST /api/find-suppliers` `{rowNumber, bottles?}` (owner-check) of losse velden voor
+  een nog niet opgeslagen wijn → `{wine, bottles, offers[]}`, goedkoopste eerst.
+- **DB:** kolom `supplierurl` (`supplierUrl` in JSON) — link naar de productpagina van de vaste
+  leverancier. Alleen via `update_wine()`, niet bij `add_wine()`.
+- **Redesign:** `SupplierSheet` (zelfde opzet als `VivinoSheet`): keuze 1/3/6/12 flessen,
+  "Bestellen bij <shop>" opent de productpagina in een nieuw venster, "Bewaren als leverancier"
+  zet `supplierName` + `supplierUrl`. Bereikbaar via "Bestel" bij lege voorraad en de knop
+  "Goedkoopste webshop" onder Leverancier; "Open webshop" als er een URL is. Badge "Goedkoopst"
+  alleen bij kloppende jaargang; afwijkend jaar krijgt een amberkleurige badge.
+- **Klassieke app:** "Bestel online" gebruikt dezelfde zoeker, met bestel-link en "Bewaren als
+  leverancier" per aanbieding; veld "Webshop" in het formulier.
+- **Direct in het winkelmandje leggen kan niet** (geen gemeenschappelijke shop-API); de
+  productpagina openen is het maximaal haalbare.
+
+---
+
+## Redesign: mobiele valkuilen (`kelder.html`)
+
+- **iOS-toetsenbord:** Safari scrolt de hele pagina omhoog zodra een invoerveld onderaan focus
+  krijgt. Daardoor verdween de kop met sluitknop en werd het geparkeerde "Nieuwe fles"-formulier
+  (`translateY(102%)`) zichtbaar. Oplossing (script direct na `#root`): app-hoogte volgt
+  `window.visualViewport`, pagina blijft op scrollpositie 0, `html/body` hebben `overflow: hidden`,
+  het gesloten formulier is `visibility: hidden`. **Gebruik nooit `scrollIntoView()`** in de
+  sheets — dat scrolt het document mee; zet `scrollTop` op de eigen lijst.
+- Fullscreen-sheets (`VivinoSheet`, `PairingSheet`, `SupplierSheet`) liggen op `zIndex: 90` in
+  `WineApp` en hebben elk hun eigen state-variabele (`vivinoQueue`, `pairingWine`, `supplierWine`).
+- Lokaal testen op de telefoon: `dev_server.py` bindt op `0.0.0.0`, dus
+  `http://<LAN-IP>:3000/kelder.html` werkt (cookie is niet `Secure` in `DEV_MODE`).
+- Overzicht: filterchips tonen alleen soorten die in de kelder voorkomen; de statistieken
+  (Flessen/Waarde/Gem.) volgen het soortfilter én de zoekopdracht; Vivino-score met merkteken
+  (`IcVivino`) naast de kastlocatie. Wijnkasten-scherm: alle kasten standaard ingeklapt.
+- Syntax-check van alle Babel-blokken zonder browser: `@babel/parser` met de `jsx`-plugin over elk
+  `<script type="text/babel">`-blok (zie eerdere sessies; `node` staat in `~/.local/node/bin`).
+
+---
+
 ## Lokale dev-server
 
 ```bash
@@ -261,4 +341,4 @@ zijn daarom samengevoegd tot **`api/wine_photo.py`** (`?variant=thumb|full` quer
 precies op **12 functies** — een nieuwe route toevoegen vereist eerst weer twee bestaande te
 mergen, of een bestaande route uit te breiden met een actie/variant-param (zoals hier).
 Voorbeelden van dat laatste: `api/auth.py?action=…`, `api/proposed_action.py?action=…`,
-`api/lookup.py?action=vivino_search|vivino_apply`.
+`api/lookup.py?action=vivino_search|vivino_apply|drink_window|pairing|pairing_save|pairing_delete`.
