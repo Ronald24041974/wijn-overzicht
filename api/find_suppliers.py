@@ -1,56 +1,42 @@
-import sys, os, json
+import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from lib.auth import require_admin
-from lib.helpers import BaseHandler, get_anthropic_client, message_text, MODEL_FAST
+from lib.helpers import BaseHandler
+from lib.db import ensure_wines_columns, resolve_owner_id, get_wine_row
+from lib.suppliers import find_offers
 
 
 class handler(BaseHandler):
+    """Zoekt online webshops voor een wijn. Body: {rowNumber, bottles?} (eigen wijn, met
+    owner-check) of losse velden {name, type, grape, country, region, year} voor een wijn
+    die nog niet is opgeslagen. Antwoord: {wine, bottles, offers[]} — goedkoopste eerst."""
+
     def do_POST(self):
-        if not require_admin(self): return
+        auth = require_admin(self)
+        if not auth: return
+        username, role = auth
         try:
             data = self.read_json()
-            client = get_anthropic_client()
-            name    = data.get("name", "")
-            wtype   = data.get("type", "")
-            grape   = data.get("grape", "")
-            country = data.get("country", "")
-            region  = data.get("region", "")
-            year    = data.get("year", "")
-            prompt = f"""Je bent een wijnexpert en online shopping specialist voor de Nederlandse markt.
+            try:
+                bottles = max(1, min(int(data.get("bottles") or 3), 60))
+            except (TypeError, ValueError):
+                bottles = 3
 
-Zoek de 3 tot 5 beste online wijnwinkels (Nederland/België) voor deze wijn:
-Naam: "{name}" | Soort: {wtype} | Druif: {grape} | {country} / {region} | Jaar: {year}
+            wine_id = int(data.get("rowNumber") or 0)
+            if wine_id:
+                ensure_wines_columns()
+                owner_id = resolve_owner_id(username, role)
+                wine = get_wine_row(wine_id, owner_id)
+                if not wine:
+                    self.json_response(404, {"message": "Wijn niet gevonden."})
+                    return
+            else:
+                wine = {k: data.get(k) for k in ("name", "type", "grape", "country", "region", "year", "producer")}
+                if not (wine.get("name") or "").strip():
+                    self.json_response(400, {"message": "Naam is vereist."})
+                    return
 
-Criteria:
-1. Betrouwbaarheid & online reviews (Trustpilot, Google Reviews)
-2. Goedkoopste TOTAALPRIJS inclusief standaard verzendkosten voor een bestelling van minimaal 3 flessen
-
-Geef UITSLUITEND een geldig JSON-array terug, gesorteerd van goedkoopste naar duurste totalFor3:
-[
-  {{
-    "name": "Winkelnaam",
-    "url": "https://...",
-    "pricePerBottle": 0.00,
-    "shipping": 0.00,
-    "freeShippingFrom": 0,
-    "totalFor3": 0.00,
-    "reviewScore": 4.5,
-    "reviewPlatform": "Trustpilot",
-    "notes": "Korte toelichting max 80 tekens."
-  }}
-]"""
-            message = client.messages.create(
-                model=MODEL_FAST,
-                max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            text = message_text(message)
-            if "```" in text:
-                parts = text.split("```")
-                text = parts[1] if len(parts) > 1 else parts[0]
-                if text.startswith("json"):
-                    text = text[4:]
-                text = text.strip().rstrip("`").strip()
-            self.json_response(200, json.loads(text))
+            offers = find_offers(wine, bottles)
+            self.json_response(200, {"wine": wine, "bottles": bottles, "offers": offers})
         except Exception as e:
             self.json_response(500, {"message": str(e)})
