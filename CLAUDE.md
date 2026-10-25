@@ -56,13 +56,17 @@ Beide apps draaien uit **één repo / één Vercel-project** (`wijn-overzicht`) 
 bijgewerkt: geen van beide is meer "bevroren" — wijzigingen aan rollen/kasten/gebruikersbeheer
 moeten in principe in **beide** front-ends worden doorgevoerd.
 
-- **Oude app** — `index.html` + `src/app.js`. Op het hoofddomein. Bevat het enige
+- **Oude app** — `index.html` + `src/app.js`. Op het hoofddomein. Bevat een
   gebruikersbeheer-paneel (toevoegen/verwijderen, 2FA van anderen, "Bekijk kelder" als superadmin).
 - **Redesign** — `kelder.html`: fullscreen React-app (React 18 + Babel-in-browser, géén build-stap).
   Eigen login + 2FA (apart domein = eigen cookie-jar), data via `/api/wines`, flesfoto's via
   `/api/wine-thumb?id=` en `/api/wine-image?id=`. Branding heet overal **"Wijnoverzicht"**.
-  Heeft géén gebruikersbeheer-paneel — alleen een "Superadmin — kelder bekijken"-sectie in
-  het Account-scherm om read-only een andere kelder te bekijken.
+  Sinds `feature/zoom-vrijstaand` heeft ook de redesign volledig gebruikersbeheer: sectie
+  "Gebruikers" in het Account-scherm (`UserManagement`, alleen superadmin) met gebruikerslijst
+  (rol, 2FA, gedeelde kelder), "Bekijk kelder" (read-only via `switchOwner`), "2FA uit",
+  "Verwijder" (met waarschuwing over cascade) en "Gebruiker toevoegen" (rol Lezer/Beheerder +
+  "Deel mijn eigen kelder" bij Lezer). Gebruikt dezelfde `/api/auth?action=…`-endpoints als de
+  klassieke app; geen nieuwe API-functies.
 
 **Belangrijk — waarom Edge Middleware:** een `vercel.json`-rewrite `"/" → /kelder.html` werkt NIET,
 want Vercel serveert statische bestanden (`index.html`) vóór `rewrites`. Daarom herschrijft
