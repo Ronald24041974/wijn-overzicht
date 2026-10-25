@@ -925,9 +925,7 @@ function DetailScreen({ w, onBack, onEdit, onDeleted, onVivino, onPairing, onSup
             ))}
           </div>
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 14, paddingRight: 40 }}>
-            <div className="tap" onClick={() => setZoom(true)} style={{ cursor: 'zoom-in', display: 'flex' }} title="Tik om te vergroten">
-              <window.WineThumb w={w} h={224} year={w.jaar} shelf label big />
-            </div>
+            <window.WineThumb w={w} h={224} year={w.jaar} shelf label big />
           </div>
         </div>
 
