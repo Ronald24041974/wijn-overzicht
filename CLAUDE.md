@@ -284,6 +284,66 @@ automatisch, geen cron** — koppelen gebeurt alleen op een expliciete actie en 
 
 ---
 
+## Redesign: design-ronde 2026-10-25 (`kelder.html`, live)
+
+Opgeleverd via `feature/zoom-vrijstaand` (zes commits, gemerged 2026-10-25):
+
+- **Vergroting van de fles** (`DetailScreen`, `zoom`-state): overlay op de lichte app-achtergrond
+  met een radiale gloed in de soortkleur (`TYPE[soort].soft`), tekst in `--ink`/`--muted`, lichte
+  `GlassBtn` als sluitknop. Geen zwarte backdrop meer. Openen via de pil **"Vergroot"**
+  (`IcZoom` + tekst) linksonder in de fleskaart — bewust weg van de scorekaarten rechts; de fles
+  zelf is níet tikbaar (keuze gebruiker: "afbeelding zoals hij was").
+- **Typografie, app-breed**: alle uppercase kopjes/eyebrows (`fontSize 12/11.5/11, letterSpacing
+  0.4–0.8, textTransform uppercase, color var(--faint)`) en de scorekaart-labels staan op
+  **`fontWeight: 800`**; rijlabels in `GroupSection` en `AddField` op **`700`**. Nieuwe kopjes
+  dezelfde gewichten geven. De kleine bijschriften onder cijfers (10.5 px, Flessen/Waarde/Gem.)
+  zijn bewust op 590 gebleven.
+- **Druif-iconen**: `IcGrape` in `TYPE[soort].dot` in de filterchips van het overzicht (behalve
+  "Alles"), in de donutlegenda en in `Bars` (via `row.dot`) op het Analyse-scherm.
+- **Landvlaggen**: `flagOf(land)` + `LAND_ISO` (Nederlandse landnaam → ISO-code → vlag-emoji) in
+  het analyse-script, gebruikt in "Waarde per land" (`row.flag`). Onbekend land → geen vlag;
+  nieuwe landen aan `LAND_ISO` toevoegen.
+- **Gebruikersbeheer in de redesign**: zie "Gebruikerspaneel" hieronder.
+
+### Design-review via Claude Design (canvas)
+
+Ontwerpfeedback loopt via een Claude Design-canvas met alle schermen van de redesign als
+statische artboards (één `.dc.html` per scherm, telefoonmaat 390 px):
+`https://claude.ai/artifact/Excsdk3jx8dMAvYUx32hbW` (privé, eigenaar = de gebruiker).
+
+- De gebruiker zet opmerkingen als **comment** op het onderdeel; Claude leest ze met
+  `ArtifactComments` (action `read`) en voert ze in één ronde door in `kelder.html` én in de
+  artboards. Comments die niet "naar Claude gestuurd" zijn, kunnen niet beantwoord/afgesloten
+  worden — in chat terugkoppelen.
+- Handmatige bewerkingen van de gebruiker in de editor landen als nieuwe versie; vóór een
+  publish altijd `project/canvas.json` en het betreffende artboard opnieuw lezen en daarop
+  verder bouwen, anders raakt zijn bewerking kwijt.
+- De artboards zijn **mockups met placeholder-cijfers** (kastindeling, drinkvenster, webshops,
+  Vivino-kandidaten), geen bron van waarheid; de code in `kelder.html` is leidend. Flesfoto's
+  komen als geüploade assets (`/_blob/<id>`) uit de lokale v2-cache.
+- Bronbestanden van het canvas staan in de sessie-scratchpad (`wijn-design/project/`) en zijn
+  dus vluchtig: bij een nieuwe sessie eerst de bestanden uit het canvas lezen (`Artifact` →
+  `read` met `path`).
+
+### Syntax-check van `kelder.html` zonder browser
+
+`@babel/parser` staat niet globaal; eenmalig in een tijdelijke map installeren en elk
+`<script type="text/babel">`-blok parsen met de `jsx`-plugin:
+
+```bash
+export PATH="$HOME/.local/node/bin:$PATH"
+mkdir -p /tmp/babelcheck && cd /tmp/babelcheck && npm i --silent @babel/parser@7.26.2
+cd "<repo>" && node -e '
+const fs=require("fs"),parser=require("/tmp/babelcheck/node_modules/@babel/parser");
+const html=fs.readFileSync("kelder.html","utf8");const re=/<script type="text\/babel">([\s\S]*?)<\/script>/g;
+let m,n=0,bad=0;while((m=re.exec(html))){n++;try{parser.parse(m[1],{sourceType:"module",plugins:["jsx"]})}catch(e){bad++;console.log("blok",n,e.message)}}
+console.log(n,"blokken,",bad,"fouten");process.exit(bad?1:0)'
+```
+
+Altijd draaien vóór een commit aan `kelder.html` (12 blokken, 0 fouten = goed).
+
+---
+
 ## Lokale dev-server
 
 ```bash
@@ -326,14 +386,30 @@ Deze Mac had standaard geen `gh` of moderne Python — beide zijn los geïnstall
 
 ---
 
-## Gebruikerspaneel (klassieke app, `src/app.js`)
+## Gebruikerspaneel (beide apps)
 
+**Klassieke app (`src/app.js`)**
 - Toegankelijk voor **alle** gebruikers (ook readonly) via header-knop
 - **Superadmin** ziet extra: gebruikerslijst, gebruiker toevoegen/verwijderen (rol-keuze
   Lezer/Beheerder + "Deel mijn eigen kelder"-checkbox bij Lezer), "Bekijk kelder"-knop per
   gebruiker (schakelt naar `?owner=` read-only weergave, banner + "Terug naar eigen kelder")
 - Gewone `admin`/`readonly` zien dit paneel **niet** — alleen eigen accountinstellingen
 - Alle gebruikers: wachtwoord wijzigen, 2FA instellen/uitschakelen
+
+**Redesign (`kelder.html`, sinds 2026-10-25)** — component `UserManagement` in `AccountScreen`,
+alleen gerenderd voor `superadmin` (vervangt de oude `SuperadminUserPicker`):
+- Sectie **"Gebruikers"**: lijst met rol-badge (`RoleBadge`), tags "jij" / "Gedeelde kelder"
+  (`sharesOwnerId`) / "2FA aan" (`totpEnabled`); per andere gebruiker de knoppen
+  **Bekijk kelder** (`switchOwner(id)`, gele banner + "Terug naar eigen kelder"),
+  **2FA uit** (`POST /api/auth?action=disable-2fa` met `username`) en **Verwijder**
+  (`DELETE /api/auth?username=…`, na `confirm` met cascade-waarschuwing).
+- **Gebruiker toevoegen** (inklapbaar): e-mail, wachtwoord (≥ 8), rolchips Lezer/Beheerder met
+  uitlegregel, checkbox "Deel mijn eigen kelder met deze lezer" alleen bij Lezer →
+  `POST /api/auth?action=add-user {username, password, role, shareOwnKelder}`.
+- Gebruikt uitsluitend bestaande `/api/auth`-acties (geen nieuwe Vercel-functie). De server
+  weigert zelf: jezelf verwijderen, de laatste superadmin verwijderen, dubbel e-mailadres.
+- 2FA voor de huidige gebruiker **instellen** kan nog alleen in de klassieke app (setup-2fa /
+  confirm-2fa hebben een QR/sleutel-flow die de redesign niet heeft).
 
 ---
 
