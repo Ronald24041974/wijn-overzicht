@@ -565,10 +565,11 @@ function ListScreen({ onOpen, onAdd, onTab }) {
               <button key={c} onClick={() => setFilter(c)} className="tap" style={{
                 flexShrink: 0, padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
                 fontSize: 13.5, fontWeight: 590, fontFamily: 'inherit',
+                display: 'inline-flex', alignItems: 'center', gap: 5,
                 background: on ? 'var(--brand)' : 'var(--surface)',
                 color: on ? '#fff' : 'var(--muted)',
                 boxShadow: on ? 'none' : 'var(--hair)',
-              }}>{c}</button>
+              }}>{window.TYPE[c] && <window.IcGrape size={14} style={{ color: on ? '#fff' : window.TYPE[c].dot, flexShrink: 0 }} />}{c}</button>
             );
           })}
         </div>
@@ -901,6 +902,12 @@ function DetailScreen({ w, onBack, onEdit, onDeleted, onVivino, onPairing, onSup
               <window.IcGrape size={15} style={{ color: t.dot, flexShrink: 0 }} /> {w.soort}
             </span>
           </div>
+          <button onClick={() => setZoom(true)} className="tap" aria-label="Fles vergroten" style={{ position: 'absolute', bottom: 14, left: 14, zIndex: 3, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px 6px 9px', borderRadius: 999,
+            background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+            fontSize: 12.5, fontWeight: 590, color: 'var(--ink)', boxShadow: 'var(--hair)' }}>
+            <window.IcZoom size={15} /> Vergroot
+          </button>
           <div style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', zIndex: 2, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[
               { label: 'Mijn', val: w.mijn, suffix: '/10' },
@@ -1734,6 +1741,22 @@ window.KastenScreen = KastenScreen;
   <script type="text/babel">
 const SOORT_ORDER = ['Rood', 'Wit', 'Rosé', 'Mousserend', 'Dessert'];
 
+// Vlag-emoji per land (Nederlandse landnaam → ISO-code); onbekend land krijgt geen vlag
+const LAND_ISO = {
+  frankrijk: 'FR', italie: 'IT', 'italië': 'IT', spanje: 'ES', portugal: 'PT', duitsland: 'DE', oostenrijk: 'AT',
+  nederland: 'NL', belgie: 'BE', 'belgië': 'BE', zwitserland: 'CH', griekenland: 'GR', hongarije: 'HU', slovenie: 'SI',
+  'slovenië': 'SI', kroatie: 'HR', 'kroatië': 'HR', georgie: 'GE', 'georgië': 'GE', libanon: 'LB', 'israël': 'IL', israel: 'IL',
+  engeland: 'GB', 'verenigd koninkrijk': 'GB', amerika: 'US', 'verenigde staten': 'US', usa: 'US', canada: 'CA',
+  chili: 'CL', 'argentinië': 'AR', argentinie: 'AR', uruguay: 'UY', brazilie: 'BR', 'brazilië': 'BR',
+  'zuid-afrika': 'ZA', 'zuid afrika': 'ZA', 'australië': 'AU', australie: 'AU', 'nieuw-zeeland': 'NZ', 'nieuw zeeland': 'NZ',
+  china: 'CN', japan: 'JP', 'marokko': 'MA', 'tunesië': 'TN', 'turkije': 'TR', 'moldavië': 'MD', 'roemenië': 'RO', 'bulgarije': 'BG',
+};
+function flagOf(land) {
+  const iso = LAND_ISO[String(land || '').trim().toLowerCase()];
+  if (!iso) return '';
+  return String.fromCodePoint(...[...iso].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 65));
+}
+
 function Donut({ segments, total }) {
   const size = 168, r = 58, sw = 16, C = 2 * Math.PI * r;
   const gap = 5;
@@ -1771,7 +1794,8 @@ function Bars({ rows, max, fmt }) {
       {rows.map((r, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ width: 92, flexShrink: 0, fontSize: 13.5, color: 'var(--muted)', fontWeight: 450, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {r.dot && <span style={{ width: 7, height: 7, borderRadius: 999, background: r.dot, flexShrink: 0 }} />}
+            {r.dot && <window.IcGrape size={14} style={{ color: r.dot, flexShrink: 0 }} />}
+            {r.flag && <span aria-hidden="true" style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }}>{r.flag}</span>}
             {r.label}
           </span>
           <div style={{ flex: 1, height: 10, borderRadius: 999, background: 'var(--fill)', overflow: 'hidden' }}>
@@ -1815,7 +1839,7 @@ function AnalyseScreen({ onTab }) {
 
   const landMap = {};
   W.forEach(w => { if (w.land) landMap[w.land] = (landMap[w.land] || 0) + w.aantal * w.prijs; });
-  const land = Object.entries(landMap).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 7);
+  const land = Object.entries(landMap).map(([label, value]) => ({ label, value, flag: flagOf(label) })).sort((a, b) => b.value - a.value).slice(0, 7);
 
   const kastMap = {}, kastValMap = {};
   W.forEach(w => { if (w.aantal) { kastMap[w.kast] = (kastMap[w.kast] || 0) + w.aantal; kastValMap[w.kast] = (kastValMap[w.kast] || 0) + w.aantal * w.prijs; } });
@@ -1856,7 +1880,7 @@ function AnalyseScreen({ onTab }) {
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {donutSegs.map((s, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 2px', borderTop: i ? '0.5px solid var(--sep)' : 'none' }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+                    <window.IcGrape size={15} style={{ color: s.color, flexShrink: 0 }} />
                     <span style={{ flex: 1, fontSize: 14, color: 'var(--ink)', fontWeight: 500 }}>{s.s}</span>
                     <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', letterSpacing: -0.2 }}>{window.fmtEur(s.value)}</span>
                     <span style={{ fontSize: 12.5, color: 'var(--faint)', minWidth: 34, textAlign: 'right' }}>{waarde ? Math.round(s.value / waarde * 100) : 0}%</span>
