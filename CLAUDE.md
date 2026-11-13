@@ -272,6 +272,11 @@ automatisch, geen cron** — koppelen gebeurt alleen op een expliciete actie en 
   `window.visualViewport`, pagina blijft op scrollpositie 0, `html/body` hebben `overflow: hidden`,
   het gesloten formulier is `visibility: hidden`. **Gebruik nooit `scrollIntoView()`** in de
   sheets — dat scrolt het document mee; zet `scrollTop` op de eigen lijst.
+- **iOS-inputzoom:** Safari zoomt de pagina in (en schuift hem horizontaal uit beeld) zodra een
+  invoerveld < 16 px is. Een globale CSS-regel in `kelder.html` forceert daarom
+  `font-size: 16px !important` op alle `input`/`textarea`/`select` (behalve checkbox/radio/file),
+  ook tegen inline `fontSize`. Nieuwe velden hoeven niets te doen; zet er nooit een kleinere maat
+  tegenover en haal `!important` niet weg.
 - Fullscreen-sheets (`VivinoSheet`, `PairingSheet`, `SupplierSheet`) liggen op `zIndex: 90` in
   `WineApp` en hebben elk hun eigen state-variabele (`vivinoQueue`, `pairingWine`, `supplierWine`).
 - Lokaal testen op de telefoon: `dev_server.py` bindt op `0.0.0.0`, dus
