@@ -1519,6 +1519,25 @@ function AddField({ label, value, onChange, placeholder, type = 'text', suffix }
     </div>
   );
 }
+// Keuzeveld (chips) i.p.v. vrije invoer — voor bv. de wijnkast
+function AddChoice({ label, value, onChange, options }) {
+  return (
+    <div style={{ padding: '12px 16px' }}>
+      <div style={{ fontSize: 15, color: 'var(--muted)', fontWeight: 700, marginBottom: 10 }}>{label}</div>
+      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+        {options.map(o => {
+          const on = value === o;
+          return (
+            <button key={o} onClick={() => onChange(o)} className="tap" style={{
+              padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: 14, fontWeight: 590, background: on ? 'var(--brand)' : 'var(--fill)', color: on ? '#fff' : 'var(--muted)',
+            }}>{o}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 function AddLabel({ children }) {
   return <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--faint)', padding: '0 6px 8px' }}>{children}</div>;
 }
@@ -1702,7 +1721,8 @@ function AddScreen({ onClose, editWine }) {
             <AddField key="land" label="Land" value={f.land} onChange={v => set('land', v)} placeholder="Italië" />,
             <AddField key="regio" label="Regio" value={f.regio} onChange={v => set('regio', v)} placeholder="Piëmont" />,
             <AddField key="alcohol" label="Alcohol" value={f.alcohol} onChange={v => set('alcohol', v)} placeholder="13.5" type="number" suffix="%" />,
-            <AddField key="kast" label="Wijnkast" value={f.kast} onChange={v => set('kast', v)} placeholder={(window.CABINETS[0] && window.CABINETS[0].name) || 'Kelder'} />,
+            <AddChoice key="kast" label="Wijnkast" value={f.kast} onChange={v => set('kast', v)}
+              options={Array.from(new Set([...(window.CABINETS || []).map(c => c.name), 'Niet ingedeeld', f.kast].filter(Boolean)))} />,
           ]} />
 
           <AddGroup title="Waardering & prijs" rows={[
