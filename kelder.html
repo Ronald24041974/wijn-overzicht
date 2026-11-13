@@ -340,15 +340,15 @@ const { useState } = React;
 
 // Echte flesfoto uit de DB met terugval op de gestileerde placeholder-fles.
 function WineThumb({ w, h = 64, label = false, shelf = false, big = false, year }) {
-  const [failed, setFailed] = useState(false);
+  const [failedSrc, setFailedSrc] = useState(null); // welke src faalde; een nieuwe src (na upload) wordt gewoon opnieuw geprobeerd
   const id = w && w.rowNumber;
-  if (!id || failed) {
+  const bust = id ? ((window.__imgBust || {})[id] || (w && w.updatedAt)) : null;
+  const src = id ? ((big ? '/api/wine-image?id=' : '/api/wine-thumb?id=') + encodeURIComponent(id) + (bust ? '&v=' + bust : '')) : null;
+  if (!id || failedSrc === src) {
     return <window.Bottle soort={w ? w.soort : 'Rood'} h={h} year={year} shelf={shelf} label={label} />;
   }
-  const bust = (window.__imgBust || {})[id] || (w && w.updatedAt);
-  const src = (big ? '/api/wine-image?id=' : '/api/wine-thumb?id=') + encodeURIComponent(id) + (bust ? '&v=' + bust : '');
   return (
-    <img src={src} alt={(w && w.naam) || ''} onError={() => setFailed(true)}
+    <img src={src} alt={(w && w.naam) || ''} onError={() => setFailedSrc(src)}
       style={{ height: h, maxWidth: '100%', objectFit: 'contain',
         filter: `drop-shadow(0 ${h * 0.035}px ${h * 0.06}px rgba(40,20,25,0.18))` }} />
   );
