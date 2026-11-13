@@ -1510,7 +1510,7 @@ function AddField({ label, value, onChange, placeholder, type = 'text', suffix }
   return (
     <div style={{ display: 'flex', alignItems: 'center', minHeight: 46, padding: '8px 16px', gap: 12 }}>
       <span style={{ fontSize: 15, color: 'var(--muted)', flexShrink: 0, fontWeight: 700, width: 92 }}>{label}</span>
-      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type} inputMode={type === 'number' ? 'decimal' : undefined}
+      <input value={value} onChange={e => onChange(type === 'number' ? e.target.value.replace(/[^0-9.,]/g, '') : e.target.value)} placeholder={placeholder} type="text" inputMode={type === 'number' ? 'decimal' : undefined}
         style={{ flex: 1, border: 'none', background: 'none', outline: 'none', textAlign: 'right', fontSize: 15, fontWeight: 450, color: 'var(--ink)', fontFamily: 'inherit', minWidth: 0 }} />
       {suffix && <span style={{ fontSize: 13.5, color: 'var(--faint)', flexShrink: 0 }}>{suffix}</span>}
     </div>
@@ -1540,7 +1540,7 @@ function wineToForm(w) {
   return {
     naam: w.naam || '', soort: w.soort || 'Rood', aantal: w.aantal || 0, jaar: w.jaar || '',
     kast: w.kast || 'Niet ingedeeld', druif: w.druif || '', land: w.land || '', regio: w.regio || '',
-    vivino: w.vivino || '', mijn: w.mijn || '', prijs: w.prijs || '', notitie: w.notitie || '',
+    vivino: w.vivino || '', mijn: w.mijn || '', prijs: w.prijs || '', inkoop: w.inkoop || '', notitie: w.notitie || '',
     producent: w.producent || '', alcohol: (w.alcohol != null) ? w.alcohol : '',
   };
 }
@@ -1549,8 +1549,13 @@ function formToPayload(f, rowNumber) {
     name: f.naam, type: f.soort, grape: f.druif, country: f.land, region: f.regio,
     year: f.jaar, quantity: f.aantal, vivino: f.vivino, score: f.mijn,
     currentPrice: f.prijs, cabinet: f.kast, note: f.notitie,
-    producer: f.producent || '', alcohol: f.alcohol === '' ? null : f.alcohol,
+    producer: f.producent || '', alcohol: f.alcohol,
+    purchasePrice: f.inkoop,
   };
+  // komma → punt (NL-invoer), lege velden blijven leeg
+  ['year', 'quantity', 'vivino', 'score', 'currentPrice', 'alcohol', 'purchasePrice'].forEach(k => {
+    if (typeof p[k] === 'string') p[k] = p[k].trim().replace(',', '.');
+  });
   if (rowNumber) p.rowNumber = rowNumber;
   return p;
 }
@@ -1619,7 +1624,7 @@ function PhotoEditor({ w }) {
 
 function AddScreen({ onClose, editWine }) {
   const isEdit = !!editWine;
-  const [f, setF] = useAddState(isEdit ? wineToForm(editWine) : { naam: '', soort: 'Rood', aantal: 1, jaar: '', kast: (window.CABINETS[0] && window.CABINETS[0].name) || '', druif: '', land: '', regio: '', vivino: '', mijn: '', prijs: '', notitie: '', producent: '', alcohol: '' });
+  const [f, setF] = useAddState(isEdit ? wineToForm(editWine) : { naam: '', soort: 'Rood', aantal: 1, jaar: '', kast: (window.CABINETS[0] && window.CABINETS[0].name) || '', druif: '', land: '', regio: '', vivino: '', mijn: '', prijs: '', notitie: '', producent: '', alcohol: '', inkoop: '' });
   const [saving, setSaving] = useAddState(false);
   const [err, setErr] = useAddState('');
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -1700,6 +1705,7 @@ function AddScreen({ onClose, editWine }) {
           <AddGroup title="Waardering & prijs" rows={[
             <AddField key="vivino" label="Vivino" value={f.vivino} onChange={v => set('vivino', v)} placeholder="4.4" type="number" suffix="/5" />,
             <AddField key="mijn" label="Mijn score" value={f.mijn} onChange={v => set('mijn', v)} placeholder="8" type="number" suffix="/10" />,
+            <AddField key="inkoop" label="Inkoopprijs" value={f.inkoop} onChange={v => set('inkoop', v)} placeholder="60" type="number" suffix="€" />,
             <AddField key="prijs" label="Prijs/fles" value={f.prijs} onChange={v => set('prijs', v)} placeholder="75" type="number" suffix="€" />,
           ]} />
 
