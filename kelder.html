@@ -139,6 +139,7 @@ function adaptWine(r) {
     kast: r.cabinet || 'Niet ingedeeld',
     notitie: r.note || '',
     producent: r.producer || '',
+    updatedAt: r.updatedAt || null,
     alcohol: (r.alcohol != null) ? Number(r.alcohol) : null,
     vivinoId: r.vivinoWineId || null,
     vivinoCount: r.vivinoRatingsCount || null,
@@ -344,7 +345,7 @@ function WineThumb({ w, h = 64, label = false, shelf = false, big = false, year 
   if (!id || failed) {
     return <window.Bottle soort={w ? w.soort : 'Rood'} h={h} year={year} shelf={shelf} label={label} />;
   }
-  const bust = (window.__imgBust || {})[id];
+  const bust = (window.__imgBust || {})[id] || (w && w.updatedAt);
   const src = (big ? '/api/wine-image?id=' : '/api/wine-thumb?id=') + encodeURIComponent(id) + (bust ? '&v=' + bust : '');
   return (
     <img src={src} alt={(w && w.naam) || ''} onError={() => setFailed(true)}
@@ -1560,6 +1561,10 @@ async function compressPhoto(file, maxSize = 1600, quality = 0.85) {
   const sc = Math.min(1, maxSize / Math.max(img.naturalWidth, img.naturalHeight));
   const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  if (file.type === 'image/png') {
+    const png = c.toDataURL('image/png').split(',')[1];
+    if (png.length < 3000000) return png; // transparantie behouden zolang het binnen de uploadlimiet past
+  }
   return c.toDataURL('image/jpeg', quality).split(',')[1];
 }
 
