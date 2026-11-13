@@ -305,6 +305,21 @@ Opgeleverd via `feature/zoom-vrijstaand` (zes commits, gemerged 2026-10-25):
   nieuwe landen aan `LAND_ISO` toevoegen.
 - **Gebruikersbeheer in de redesign**: zie "Gebruikerspaneel" hieronder.
 
+### Bewerkscherm redesign (`AddScreen`, "Wijn bewerken") — bijgewerkt 2026-11-13
+
+- **Foto**: sectie `PhotoEditor` (alleen bij bewerken): "Foto kiezen" en "Verwijderen". Upload gaat via
+  `POST /api/upload-image` (= `image_input.py?mode=data`), dus dezelfde serverpijplijn als alle andere
+  afbeeldingen (achtergrond verwijderen, thumbnail). Client verkleint tot max 1600 px; een PNG blijft PNG
+  (transparantie) zolang base64 < 3 MB, anders JPEG 0,85.
+- **Cache**: `/api/wine-image|thumb` is `immutable` (1 jaar). `WineThumb` zet daarom `&v=` achter de URL
+  (`window.__imgBust[id]` na upload, anders `w.updatedAt`). `WineThumb` onthoudt de *gefaalde src* (niet een
+  boolean), anders blijft een wijn zonder foto op de placeholder staan ook ná een upload.
+- **Velden**: Producent, Alcohol en Inkoopprijs (`purchasePrice`) zijn bewerkbaar; Vivino-waarden kunnen
+  dus handmatig worden aangepast.
+- **Getallen**: `AddField type="number"` is een tekstveld met `inputMode="decimal"` — `type="number"` liet op
+  iOS (NL) geen komma toe. `formToPayload` zet komma → punt. Nieuwe numerieke velden dezelfde aanpak geven en
+  in de lijst `['year','quantity',…]` in `formToPayload` opnemen.
+
 ### Design-review via Claude Design (canvas)
 
 Ontwerpfeedback loopt via een Claude Design-canvas met alle schermen van de redesign als
