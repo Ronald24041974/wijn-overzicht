@@ -36,6 +36,9 @@
     -webkit-font-smoothing: antialiased;
     color: var(--ink);
   }
+  /* iOS Safari zoomt de hele pagina in (en verschuift hem horizontaal) zodra een invoerveld
+     kleiner dan 16 px is. Daarom nooit onder 16 px, ook niet bij inline fontSize. */
+  input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select { font-size: 16px !important; }
   /* running app column — full viewport on phone, centered column on desktop */
   .app-shell {
     position: relative; height: 100%; width: 100%; max-width: 440px;
