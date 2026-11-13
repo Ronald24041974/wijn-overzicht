@@ -1519,23 +1519,21 @@ function AddField({ label, value, onChange, placeholder, type = 'text', suffix }
     </div>
   );
 }
-// Keuzeveld (chips) i.p.v. vrije invoer — voor bv. de wijnkast
+// Keuzeveld: zelfde rij-opzet als AddField (label links, keuze rechts), met het iOS-keuzewiel
 function AddChoice({ label, value, onChange, options }) {
   return (
-    <div style={{ padding: '12px 16px' }}>
-      <div style={{ fontSize: 15, color: 'var(--muted)', fontWeight: 700, marginBottom: 10 }}>{label}</div>
-      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-        {options.map(o => {
-          const on = value === o;
-          return (
-            <button key={o} onClick={() => onChange(o)} className="tap" style={{
-              padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-              fontSize: 14, fontWeight: 590, background: on ? 'var(--brand)' : 'var(--fill)', color: on ? '#fff' : 'var(--muted)',
-            }}>{o}</button>
-          );
-        })}
-      </div>
-    </div>
+    <label style={{ display: 'flex', alignItems: 'center', minHeight: 46, padding: '8px 16px', gap: 12, cursor: 'pointer' }}>
+      <span style={{ fontSize: 15, color: 'var(--muted)', flexShrink: 0, fontWeight: 700, width: 92 }}>{label}</span>
+      <span style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minWidth: 0 }}>
+        <select value={value} onChange={e => onChange(e.target.value)}
+          style={{ appearance: 'none', WebkitAppearance: 'none', border: 'none', background: 'none', outline: 'none', cursor: 'pointer',
+            textAlign: 'right', textAlignLast: 'right', direction: 'rtl', fontSize: 15, fontWeight: 590, color: 'var(--brand)', fontFamily: 'inherit',
+            padding: '4px 22px 4px 0', maxWidth: '100%' }}>
+          {options.map(o => <option key={o} value={o} style={{ direction: 'ltr' }}>{o}</option>)}
+        </select>
+        <window.IcChevDown size={15} style={{ position: 'absolute', right: 0, color: 'var(--faint)', pointerEvents: 'none' }} />
+      </span>
+    </label>
   );
 }
 function AddLabel({ children }) {
