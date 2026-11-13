@@ -139,6 +139,7 @@ function adaptWine(r) {
     kast: r.cabinet || 'Niet ingedeeld',
     notitie: r.note || '',
     producent: r.producer || '',
+    updatedAt: r.updatedAt || null,
     alcohol: (r.alcohol != null) ? Number(r.alcohol) : null,
     vivinoId: r.vivinoWineId || null,
     vivinoCount: r.vivinoRatingsCount || null,
@@ -344,7 +345,8 @@ function WineThumb({ w, h = 64, label = false, shelf = false, big = false, year 
   if (!id || failed) {
     return <window.Bottle soort={w ? w.soort : 'Rood'} h={h} year={year} shelf={shelf} label={label} />;
   }
-  const src = (big ? '/api/wine-image?id=' : '/api/wine-thumb?id=') + encodeURIComponent(id);
+  const bust = (window.__imgBust || {})[id] || (w && w.updatedAt);
+  const src = (big ? '/api/wine-image?id=' : '/api/wine-thumb?id=') + encodeURIComponent(id) + (bust ? '&v=' + bust : '');
   return (
     <img src={src} alt={(w && w.naam) || ''} onError={() => setFailed(true)}
       style={{ height: h, maxWidth: '100%', objectFit: 'contain',
@@ -1539,6 +1541,7 @@ function wineToForm(w) {
     naam: w.naam || '', soort: w.soort || 'Rood', aantal: w.aantal || 0, jaar: w.jaar || '',
     kast: w.kast || 'Niet ingedeeld', druif: w.druif || '', land: w.land || '', regio: w.regio || '',
     vivino: w.vivino || '', mijn: w.mijn || '', prijs: w.prijs || '', notitie: w.notitie || '',
+    producent: w.producent || '', alcohol: (w.alcohol != null) ? w.alcohol : '',
   };
 }
 function formToPayload(f, rowNumber) {
@@ -1546,14 +1549,77 @@ function formToPayload(f, rowNumber) {
     name: f.naam, type: f.soort, grape: f.druif, country: f.land, region: f.regio,
     year: f.jaar, quantity: f.aantal, vivino: f.vivino, score: f.mijn,
     currentPrice: f.prijs, cabinet: f.kast, note: f.notitie,
+    producer: f.producent || '', alcohol: f.alcohol === '' ? null : f.alcohol,
   };
   if (rowNumber) p.rowNumber = rowNumber;
   return p;
 }
 
+async function compressPhoto(file, maxSize = 1600, quality = 0.85) {
+  const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Kon de foto niet inlezen.')); r.readAsDataURL(file); });
+  const img = await new Promise((res, rej) => { const el = new Image(); el.onload = () => res(el); el.onerror = () => rej(new Error('Kon de foto niet lezen (HEIC? Kies JPG/PNG).')); el.src = dataUrl; });
+  const sc = Math.min(1, maxSize / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  if (file.type === 'image/png') {
+    const png = c.toDataURL('image/png').split(',')[1];
+    if (png.length < 3000000) return png; // transparantie behouden zolang het binnen de uploadlimiet past
+  }
+  return c.toDataURL('image/jpeg', quality).split(',')[1];
+}
+
+function PhotoEditor({ w }) {
+  const [busy, setBusy] = useAddState(false);
+  const [msg, setMsg] = useAddState('');
+  const [, bump] = useAddState(0);
+  const inputRef = React.useRef(null);
+  const changed = (ok) => { window.__imgBust = window.__imgBust || {}; window.__imgBust[w.rowNumber] = Date.now(); bump(n => n + 1); if (window.__refresh) window.__refresh(); setMsg(ok); };
+  const onPick = async (e) => {
+    const file = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    setBusy(true); setMsg('');
+    try {
+      const imageData = await compressPhoto(file);
+      const r = await window.fetchJSON('/api/upload-image', { method: 'POST', body: JSON.stringify({ id: w.rowNumber, imageData }) });
+      if (!r.ok) throw new Error(r.status === 413 ? 'Foto is te groot voor de server.' : (r.data.message || 'Uploaden mislukt'));
+      changed('Foto opgeslagen.');
+    } catch (err) { setMsg(err.message || 'Uploaden mislukt'); }
+    setBusy(false);
+  };
+  const remove = async () => {
+    if (!confirm('Foto van deze wijn verwijderen?')) return;
+    setBusy(true); setMsg('');
+    try {
+      const r = await window.fetchJSON('/api/wine-image?id=' + encodeURIComponent(w.rowNumber), { method: 'DELETE' });
+      if (!r.ok) throw new Error(r.data.message || 'Verwijderen mislukt');
+      changed('Foto verwijderd.');
+    } catch (err) { setMsg(err.message || 'Verwijderen mislukt'); }
+    setBusy(false);
+  };
+  const btn = { padding: '9px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 590 };
+  return (
+    <div style={{ marginTop: 22 }}>
+      <AddLabel>Foto</AddLabel>
+      <div className="add-group" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px' }}>
+        <div style={{ width: 52, height: 70, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f6f4ef', borderRadius: 10, overflow: 'hidden' }}>
+          <window.WineThumb w={w} h={62} />
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => inputRef.current && inputRef.current.click()} disabled={busy} className="tap" style={{ ...btn, background: 'var(--brand)', color: '#fff' }}>{busy ? 'Bezig…' : 'Foto kiezen'}</button>
+            <button onClick={remove} disabled={busy} className="tap" style={{ ...btn, background: 'var(--fill)', color: 'var(--muted)' }}>Verwijderen</button>
+          </div>
+          {msg && <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{msg}</span>}
+        </div>
+        <input ref={inputRef} type="file" accept="image/*" onChange={onPick} style={{ display: 'none' }} />
+      </div>
+    </div>
+  );
+}
+
 function AddScreen({ onClose, editWine }) {
   const isEdit = !!editWine;
-  const [f, setF] = useAddState(isEdit ? wineToForm(editWine) : { naam: '', soort: 'Rood', aantal: 1, jaar: '', kast: (window.CABINETS[0] && window.CABINETS[0].name) || '', druif: '', land: '', regio: '', vivino: '', mijn: '', prijs: '', notitie: '' });
+  const [f, setF] = useAddState(isEdit ? wineToForm(editWine) : { naam: '', soort: 'Rood', aantal: 1, jaar: '', kast: (window.CABINETS[0] && window.CABINETS[0].name) || '', druif: '', land: '', regio: '', vivino: '', mijn: '', prijs: '', notitie: '', producent: '', alcohol: '' });
   const [saving, setSaving] = useAddState(false);
   const [err, setErr] = useAddState('');
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -1619,11 +1685,15 @@ function AddScreen({ onClose, editWine }) {
             </div>
           </div>
 
+          {isEdit && <PhotoEditor w={editWine} />}
+
           <AddGroup title="Herkomst" rows={[
+            <AddField key="producent" label="Producent" value={f.producent} onChange={v => set('producent', v)} placeholder="Gaja" />,
             <AddField key="jaar" label="Jaar" value={f.jaar} onChange={v => set('jaar', v)} placeholder="2017" type="number" />,
             <AddField key="druif" label="Druifsoort" value={f.druif} onChange={v => set('druif', v)} placeholder="Nebbiolo" />,
             <AddField key="land" label="Land" value={f.land} onChange={v => set('land', v)} placeholder="Italië" />,
             <AddField key="regio" label="Regio" value={f.regio} onChange={v => set('regio', v)} placeholder="Piëmont" />,
+            <AddField key="alcohol" label="Alcohol" value={f.alcohol} onChange={v => set('alcohol', v)} placeholder="13.5" type="number" suffix="%" />,
             <AddField key="kast" label="Wijnkast" value={f.kast} onChange={v => set('kast', v)} placeholder={(window.CABINETS[0] && window.CABINETS[0].name) || 'Kelder'} />,
           ]} />
 
