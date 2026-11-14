@@ -321,6 +321,10 @@ Opgeleverd via `feature/zoom-vrijstaand` (zes commits, gemerged 2026-10-25):
   boolean), anders blijft een wijn zonder foto op de placeholder staan ook ná een upload.
 - **Velden**: Producent, Alcohol en Inkoopprijs (`purchasePrice`) zijn bewerkbaar; Vivino-waarden kunnen
   dus handmatig worden aangepast.
+- **Wijnkast = keuzeveld**: `AddChoice` (rij: label links, `<select>` rechts met iOS-keuzewiel, pijltje) met de
+  kasten uit `window.CABINETS` + "Niet ingedeeld"; een oude kastnaam die niet meer bestaat blijft als extra
+  optie staan zodat er niets verloren gaat. Geen vrije invoer meer. Alleen in de redesign; de klassieke app
+  had al een lijst. Chips zijn geprobeerd maar liepen over twee regels — rij met keuzewiel is de gekozen vorm.
 - **Getallen**: `AddField type="number"` is een tekstveld met `inputMode="decimal"` — `type="number"` liet op
   iOS (NL) geen komma toe. `formToPayload` zet komma → punt. Nieuwe numerieke velden dezelfde aanpak geven en
   in de lijst `['year','quantity',…]` in `formToPayload` opnemen.
